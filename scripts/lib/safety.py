@@ -30,6 +30,12 @@ PROMO_PHRASES = (
     "my tool", "my cli", "my script", "my repo", "my project",
     "check it out", "shameless plug", "dm me", "link in bio",
     "feel free to try", "repo is", "github.com", "dancolta",
+    # Meta-disclosure bans — never reveal that this tool exists or that the
+    # reply is auto-drafted. Mentioning x-engage in a reply turns the reply
+    # into proof the account uses automation.
+    "x-engage", "x engage", "xengage",
+    "reply generator", "reply bot", "comment generator", "comment bot",
+    "auto-reply", "auto reply", "automated reply", "automated comment",
 )
 
 # OSS-anchor markers: phrases that indicate the draft references a Dan-built thing.
