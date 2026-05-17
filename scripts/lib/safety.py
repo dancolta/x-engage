@@ -23,6 +23,30 @@ BANNED_OPENERS = (
     "so true", "spot on", "love this", "facts",
 )
 
+# Promo / self-promo phrases — auto-reject anywhere in draft (T4b OSS-anchor guardrail).
+# Lowercased. Substring match.
+PROMO_PHRASES = (
+    "i built", "i made", "i wrote", "i created", "i shipped",
+    "my tool", "my cli", "my script", "my repo", "my project",
+    "check it out", "shameless plug", "dm me", "link in bio",
+    "feel free to try", "repo is", "github.com", "dancolta",
+)
+
+# OSS-anchor markers: phrases that indicate the draft references a Dan-built thing.
+# If present, the draft is treated as a T4b and must pass the frequency cap.
+OSS_ANCHOR_MARKERS = (
+    "built a small", "built a tiny", "built a quick",
+    "have a small cli", "have a small tool", "have a small script",
+    "wrote a small", "wrote a tiny", "wrote a script that",
+    "open-sourced", "open sourced",
+    "small cli doing", "small tool doing",
+)
+
+# Hard cap: at most this many OSS-anchor replies in the most recent N published.
+# 1-in-25 keeps the visible self-mention ratio safe at sub-500-follower scale.
+OSS_ANCHOR_WINDOW = 25
+OSS_ANCHOR_MAX_IN_WINDOW = 1
+
 # Negation-reframe scan triggers
 NEG_WORDS = re.compile(r"\b(not|isn't|wasn't|aren't|won't)\b", re.IGNORECASE)
 
@@ -74,6 +98,32 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str]) -> 
     for opener in BANNED_OPENERS:
         if low.startswith(opener):
             return False, f"banned opener: {opener!r}"
+
+    # --- promo phrases (T4b guardrail — applies to all drafts) ---
+    for phrase in PROMO_PHRASES:
+        if phrase in low:
+            return False, f"promo phrase: {phrase!r}"
+
+    # --- OSS anchor: position + frequency check ---
+    oss_hit = next((m for m in OSS_ANCHOR_MARKERS if m in low), None)
+    if oss_hit:
+        # Must not appear in the first 40 chars (opener position).
+        if low.find(oss_hit) < 40:
+            return False, f"OSS-anchor in opener position: {oss_hit!r}"
+        # Must be in earned-long band — anchor needs room to read non-promo.
+        if len(text) < 190:
+            return False, f"OSS-anchor requires 190+ chars (got {len(text)})"
+        # Frequency cap vs recent published.
+        try:
+            from . import state
+            recent = state.recent_oss_anchor_count(OSS_ANCHOR_WINDOW, OSS_ANCHOR_MARKERS)
+        except Exception:
+            recent = 0
+        if recent >= OSS_ANCHOR_MAX_IN_WINDOW:
+            return False, (
+                f"OSS-anchor frequency cap: {recent} in last {OSS_ANCHOR_WINDOW} "
+                f"(max {OSS_ANCHOR_MAX_IN_WINDOW})"
+            )
 
     # --- emoji / hashtag / handle (other than OP) / link / exclamation ---
     if EMOJI_RE.search(text):

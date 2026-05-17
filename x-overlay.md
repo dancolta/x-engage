@@ -87,6 +87,19 @@ Use one template per reply. State tracks the last 5 template IDs and rejects dra
 - **Goal fit**: positioning
 - **Skip on**: lifestyle/marketing threads (reads as one-upping).
 
+### T4b. OSS Build-Anchor (variant of T4) — RARE, frequency-capped (use ≤1 in 25)
+- **Formula**: T4 with the time-anchor replaced by a build-anchor — `[Same/Similar/Adjacent] pattern — built a small [thing] for [X], [specific observation that generalizes].`
+- **Band**: 190–240 (earned-long only, never punch band — needs room to be non-promo)
+- **Example**: `Same pattern — built a small CLI doing exactly this, the bottleneck wasn't the model, it was that the planner output wasn't cached between turns.`
+- **Goal fit**: positioning
+- **HARD RULES (any violation → SKIP this template, fall back to T4):**
+  - Never the opener. Anchor lives mid/late, after the value-add.
+  - Never start the clause with `I built` / `I made` / `My tool` / `My CLI`. Use noun-first or verb-first (`Built a small…`, `Have a small CLI…`, `Wrote a script that…`).
+  - No tool name, no repo name, no link, no `dancolta`, no `github`. The mention is an artifact reference, not a brand.
+  - Load-bearing test: delete the anchor clause. If the reply still argues the same point cleanly, the anchor was bolted on — SKIP.
+  - Frequency: hard cap of 1 OSS-anchor in the last 25 published replies (enforced by safety lint via state). At <500 followers the visible self-mention ratio is what readers pattern-match on.
+  - Skip on lifestyle / non-builder / non-OSS-adjacent threads. Only fires when OP is discussing the exact tooling/problem the OSS thing addresses.
+
 ### T7. Three-Beat Closer — MEDIUM, voice multiplier (use ~5%)
 - **Formula**: `[Clause]. [Clause]. [Punchline clause].`
 - **Band**: 80–110
@@ -108,6 +121,8 @@ Mobile collapses replies after ~60-80 chars — first 3-5 words decide profile-c
 - Any emoji-led opener
 - Any hashtag-led opener
 - Any opener that exactly matches the OP's first 4 words
+
+**Promo phrases (auto-reject anywhere in draft):** `I built`, `I made`, `check it out`, `shameless plug`, `DM me`, `link in bio`, `feel free to try`, `repo is`, `github.com`, `dancolta`.
 
 **Validated openers (use these shapes):** dollar figure (`$80 and…`), number+unit (`3 weekends in…`), contrarian flag (`Inverse —`, `Counter-data point:`), noun-first observation (`Bottleneck was…`, `Latency disappears when…`), single sharp question (`What was the baseline…`).
 

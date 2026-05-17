@@ -213,6 +213,27 @@ def recent_openers(limit: int = 5) -> list[str]:
 
 # --- Counts ---
 
+def recent_oss_anchor_count(window: int, markers: tuple[str, ...]) -> int:
+    """Count how many of the most recent `window` published drafts contain any
+    OSS-anchor marker (substring, case-insensitive). Used by the safety lint to
+    enforce the T4b frequency cap.
+    """
+    if window <= 0 or not markers:
+        return 0
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT draft FROM drafts WHERE status='published' "
+            "ORDER BY published_at DESC LIMIT ?",
+            (window,),
+        ).fetchall()
+    hits = 0
+    for r in rows:
+        low = (r["draft"] or "").lower()
+        if any(m in low for m in markers):
+            hits += 1
+    return hits
+
+
 def queue_counts() -> dict[str, int]:
     with _conn() as c:
         rows = c.execute(
