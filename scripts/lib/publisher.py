@@ -216,6 +216,9 @@ def _publish_one(page, row: dict[str, Any]) -> tuple[bool, str]:
         )
         if row.get("notion_page_id"):
             notion_mirror.update_status(row["notion_page_id"], "published", published_url=url)
+            # Archive the Notion page once shipped — keeps the active queue view clean.
+            # Same pattern as /linkedin-comment.
+            notion_mirror.archive_page(row["notion_page_id"])
         log.info("published", id=row["id"], parent=url)
         return True, ""
     except Exception as e:

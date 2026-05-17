@@ -116,6 +116,15 @@ def update_status(page_id: str, internal_status: str,
     _request("PATCH", f"/pages/{page_id}", {"properties": props})
 
 
+def archive_page(page_id: str) -> None:
+    """Archive a Notion page (sets archived=true). Used after publish so the active
+    queue view stays clean — matches /linkedin-comment's pattern.
+    """
+    if not _enabled() or not page_id:
+        return
+    _request("PATCH", f"/pages/{page_id}", {"archived": True})
+
+
 def fetch_final_text(page_id: str) -> str | None:
     """Read final_text override from Notion (if Dan edited the draft in Notion before publish)."""
     if not _enabled() or not page_id:
