@@ -9,7 +9,7 @@ Pipeline (per fetch run):
   2. For each subquery: call bird → preserve full timestamp → normalize → signals.annotate_stream →
      prune_low_relevance → dedupe → snippet.extract_best_snippet.
   3. Cross-subquery dedup, sort by `local_rank_score` (composite from signals.py).
-  4. Apply x-comment-specific filters: age window (5–60 min), per-handle cooldown,
+  4. Apply x-engage-specific filters: age window (5–60 min), per-handle cooldown,
      seen-posts, lifetime cap, follower bounds.
 
 Modules in `vendor/l30d/` are vendored verbatim from /last30days so depth and output
@@ -305,7 +305,7 @@ def fetch_candidates() -> list[SourceItem]:
     all_items = _dedupe.dedupe_items(all_items)
     all_items.sort(key=lambda i: i.local_rank_score or 0.0, reverse=True)
 
-    # x-comment-specific filters
+    # x-engage-specific filters
     filtered: list[SourceItem] = []
     for item in all_items:
         author = (item.author or "").lstrip("@").strip()

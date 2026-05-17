@@ -1,4 +1,4 @@
-"""Structured logging for x-comment."""
+"""Structured logging for x-engage."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 _LEVELS = {"DEBUG": 10, "INFO": 20, "WARN": 30, "ERROR": 40}
-_LEVEL = _LEVELS.get(os.environ.get("X_COMMENT_LOG", "INFO").upper(), 20)
+_LEVEL = _LEVELS.get(os.environ.get("X_ENGAGE_LOG", "INFO").upper(), 20)
 
 
 def _emit(level: str, msg: str, **fields: Any) -> None:

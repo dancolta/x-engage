@@ -27,7 +27,7 @@ from . import log
 
 ROOT = Path(__file__).resolve().parents[2]
 BIRD_MJS = ROOT / "scripts" / "lib" / "vendor" / "l30d" / "vendor" / "bird-search" / "bird-search.mjs"
-PAUSED_FLAG = Path.home() / ".x-comment" / "PAUSED"
+PAUSED_FLAG = Path.home() / ".x-engage" / "PAUSED"
 
 # Match common phrases X returns when the session is dead. Conservative — we
 # only halt the run when we're confident, otherwise an unrelated 5xx would
@@ -179,7 +179,7 @@ def write_paused_for_cookies(reason: str) -> Path:
         "  1. Open x.com in Chrome, log out, log back in.\n"
         "  2. Open DevTools (Cmd+Opt+I) → Application → Cookies → https://x.com\n"
         "  3. Copy the Value of `auth_token` and `ct0` into .env as AUTH_TOKEN= and CT0=\n"
-        "  4. Delete this file (~/.x-comment/PAUSED) to resume.\n"
+        "  4. Delete this file (~/.x-engage/PAUSED) to resume.\n"
     )
     PAUSED_FLAG.write_text(body)
     log.error("cookies_expired", reason=reason, paused_flag=str(PAUSED_FLAG))

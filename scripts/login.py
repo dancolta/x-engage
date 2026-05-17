@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.lib import config  # loads .env and SSL certs
 
-PROFILE = Path(os.path.expanduser(config.env("X_PROFILE_DIR", "~/.x-comment/chrome-profile") or ""))
+PROFILE = Path(os.path.expanduser(config.env("X_PROFILE_DIR", "~/.x-engage/chrome-profile") or ""))
 
 
 def main() -> int:

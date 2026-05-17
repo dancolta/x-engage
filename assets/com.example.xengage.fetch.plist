@@ -2,13 +2,13 @@
 <!--
   Drafting job. Fires several times across the posting windows defined in
   config/settings.yml. NEVER auto-publishes — it only fills the draft queue.
-  Approval happens in chat via `/x-comment review` + `approve`.
+  Approval happens in chat via `/x-engage review` + `approve`.
 
   Setup:
-    1. Replace YOUR_USERNAME and YOUR_PATH_TO_X_COMMENT placeholders below
+    1. Replace YOUR_USERNAME and YOUR_PATH_TO_X_ENGAGE placeholders below
        with your real values.
-    2. cp assets/com.example.xcomment.fetch.plist ~/Library/LaunchAgents/
-    3. launchctl load ~/Library/LaunchAgents/com.example.xcomment.fetch.plist
+    2. cp assets/com.example.xengage.fetch.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.example.xengage.fetch.plist
 
   Adjust ProgramArguments / paths to your Python venv if not using system Python.
 -->
@@ -16,17 +16,17 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.example.xcomment.fetch</string>
+    <string>com.example.xengage.fetch</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>
         <string>-lc</string>
-        <string>cd "YOUR_PATH_TO_X_COMMENT" && python3 -m scripts.x_comment fetch</string>
+        <string>cd "YOUR_PATH_TO_X_ENGAGE" && python3 -m scripts.x_engage fetch</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>YOUR_PATH_TO_X_COMMENT</string>
+    <string>YOUR_PATH_TO_X_ENGAGE</string>
 
     <key>StartCalendarInterval</key>
     <array>
@@ -44,9 +44,9 @@
     </array>
 
     <key>StandardOutPath</key>
-    <string>YOUR_PATH_TO_X_COMMENT/logs/launchd-fetch.log</string>
+    <string>YOUR_PATH_TO_X_ENGAGE/logs/launchd-fetch.log</string>
     <key>StandardErrorPath</key>
-    <string>YOUR_PATH_TO_X_COMMENT/logs/launchd-fetch.err</string>
+    <string>YOUR_PATH_TO_X_ENGAGE/logs/launchd-fetch.err</string>
 
     <key>RunAtLoad</key>
     <false/>

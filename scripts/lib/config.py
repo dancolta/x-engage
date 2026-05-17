@@ -74,9 +74,9 @@ def env(key: str, default: str | None = None) -> str | None:
 
 def is_halted() -> bool:
     """Return True if any kill switch is engaged."""
-    if env("X_COMMENT_HALT", "0") == "1":
+    if env("X_ENGAGE_HALT", "0") == "1":
         return True
-    paused_flag = Path.home() / ".x-comment" / "PAUSED"
+    paused_flag = Path.home() / ".x-engage" / "PAUSED"
     return paused_flag.exists()
 
 

@@ -24,7 +24,7 @@ SAFETY_KEYWORDS = (
     "sign in to x",
 )
 
-PAUSED_FLAG = Path.home() / ".x-comment" / "PAUSED"
+PAUSED_FLAG = Path.home() / ".x-engage" / "PAUSED"
 INCIDENT_DIR = Path.home() / "Downloads"
 
 
@@ -34,7 +34,7 @@ def _write_paused(reason: str) -> None:
 
 
 def _profile_dir() -> Path:
-    raw = config.env("X_PROFILE_DIR", "~/.x-comment/chrome-profile")
+    raw = config.env("X_PROFILE_DIR", "~/.x-engage/chrome-profile")
     p = Path(os.path.expanduser(raw or ""))
     p.mkdir(parents=True, exist_ok=True)
     return p

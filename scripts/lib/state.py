@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
-DB_PATH = ROOT / "state" / "x-comment.sqlite"
+DB_PATH = ROOT / "state" / "x-engage.sqlite"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS drafts (

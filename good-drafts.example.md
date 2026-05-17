@@ -2,8 +2,8 @@
 #
 # How this works:
 #   - Copy this file to `good-drafts.md` (gitignored, personal).
-#   - When `/x-comment review` shows drafts you love, run:
-#         /x-comment good <id>
+#   - When `/x-engage review` shows drafts you love, run:
+#         /x-engage good <id>
 #     The skill appends that draft here with auto-timestamp + template tag.
 #   - At draft time, `voice.py` injects a random 3 of N entries into the prompt
 #     as **vibe references only**. The drafter is explicitly told NOT to copy

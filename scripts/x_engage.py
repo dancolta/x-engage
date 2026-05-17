@@ -1,4 +1,4 @@
-"""x-comment CLI orchestrator. Subcommands: fetch | review | approve | redraft | kill | publish | status | setup.
+"""x-engage CLI orchestrator. Subcommands: fetch | review | approve | redraft | kill | publish | status | setup.
 
 All subcommands print structured one-line summaries the skill wrapper (SKILL.md)
 will surface to Dan in chat. Exit code 2 = account safety signal — caller must HALT.
@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Make `from scripts.lib...` work when invoked as `python -m scripts.x_comment`
+# Make `from scripts.lib...` work when invoked as `python -m scripts.x_engage`
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.lib import config, log, state, voice, safety, notion_mirror
@@ -35,7 +35,7 @@ def _followers(item) -> int:
 
 def _check_halted() -> None:
     if config.is_halted():
-        print("HALTED: kill switch engaged (X_COMMENT_HALT=1 or ~/.x-comment/PAUSED)")
+        print("HALTED: kill switch engaged (X_ENGAGE_HALT=1 or ~/.x-engage/PAUSED)")
         sys.exit(2)
 
 
@@ -77,7 +77,7 @@ def cmd_fetch() -> int:
         print(f"COOKIES_EXPIRED: {e}")
         print("Fix: log out + back in on x.com, copy fresh auth_token + ct0 from")
         print("DevTools (Application → Cookies → x.com) into .env, then delete")
-        print(f"{Path.home() / '.x-comment' / 'PAUSED'} to resume.")
+        print(f"{Path.home() / '.x-engage' / 'PAUSED'} to resume.")
         return 2
     log.info("candidates_count", n=len(candidates))
 
@@ -153,7 +153,7 @@ def cmd_fetch() -> int:
 def cmd_review() -> int:
     pending = state.list_drafts(status="pending")
     if not pending:
-        print("review: no pending drafts. Run /x-comment fetch first.")
+        print("review: no pending drafts. Run /x-engage fetch first.")
         return 0
     print(f"review: {len(pending)} pending draft(s)\n")
     for i, row in enumerate(pending, start=1):
@@ -191,7 +191,7 @@ def cmd_approve(args: list[str]) -> int:
             if row and row.get("notion_page_id"):
                 notion_mirror.update_status(row["notion_page_id"], "approved")
             n += 1
-    print(f"approve: marked {n} draft(s) approved. Run `/x-comment publish` to ship.")
+    print(f"approve: marked {n} draft(s) approved. Run `/x-engage publish` to ship.")
     return 0
 
 
@@ -199,7 +199,7 @@ def cmd_approve(args: list[str]) -> int:
 
 def cmd_redraft(args: list[str]) -> int:
     if len(args) < 2:
-        print('redraft: usage `/x-comment redraft <id> "<feedback>"`')
+        print('redraft: usage `/x-engage redraft <id> "<feedback>"`')
         return 1
     tid = args[0].strip("#")
     feedback = " ".join(args[1:])
@@ -265,7 +265,7 @@ GOOD_DRAFTS_MAX = 25  # FIFO ceiling — drop oldest entry when this is exceeded
 def cmd_good(args: list[str]) -> int:
     """Append a draft to good-drafts.md as a vibe reference for future drafting.
 
-    Usage: /x-comment good <draft_id>
+    Usage: /x-engage good <draft_id>
 
     The drafter will read good-drafts.md at draft time and inject a random 3 of N
     examples as VIBE references (not templates to copy). The safety lint rejects
@@ -321,7 +321,7 @@ def cmd_publish() -> int:
     settings = _settings_or_panic()
     approved = state.list_approved_for_publish()
     if not approved:
-        print("publish: nothing approved. Use `/x-comment review` then `approve <ids|all>`.")
+        print("publish: nothing approved. Use `/x-engage review` then `approve <ids|all>`.")
         return 0
 
     cap_remaining = settings["daily_cap"] - state.count_published_today()
@@ -357,8 +357,8 @@ def cmd_status() -> int:
     settings = _settings_or_panic()
     counts = state.queue_counts()
     published_today = state.count_published_today()
-    paused = (Path.home() / ".x-comment" / "PAUSED").exists()
-    halt = config.env("X_COMMENT_HALT", "0") == "1"
+    paused = (Path.home() / ".x-engage" / "PAUSED").exists()
+    halt = config.env("X_ENGAGE_HALT", "0") == "1"
     print(f"status: published_today={published_today}/{settings['daily_cap']}, "
           f"queue={counts}, paused={paused}, halt_env={halt}")
     return 0
@@ -406,7 +406,7 @@ def cmd_setup() -> int:
     else:
         print("[fail] claude CLI not found. Set CLAUDE_CLI in .env or install Claude Code.")
         ok = False
-    profile_dir = config.env("X_PROFILE_DIR", "~/.x-comment/chrome-profile")
+    profile_dir = config.env("X_PROFILE_DIR", "~/.x-engage/chrome-profile")
     print(f"[info] Playwright profile dir: {profile_dir} (you'll log into X here once)")
     return 0 if ok else 1
 
@@ -431,7 +431,7 @@ def main() -> int:
     }
     if cmd not in table:
         print(f"Unknown command: {cmd}")
-        print("Usage: x_comment [fetch|review|approve|redraft|kill|good|publish|status|setup]")
+        print("Usage: x_engage [fetch|review|approve|redraft|kill|good|publish|status|setup]")
         return 1
     return table[cmd]()
 

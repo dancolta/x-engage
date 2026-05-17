@@ -1,13 +1,13 @@
 ---
-name: x-comment
-description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-comment", "x-comment", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status".
+name: x-engage
+description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-engage", "x-engage", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status".
 ---
 
-# /x-comment
+# /x-engage
 
-Thin wrapper over the local `x-comment` checkout.
+Thin wrapper over the local `x-engage` checkout.
 
-Set `X_COMMENT_DIR` in your environment (or this skill's caller config) to the absolute path of your local clone. Defaults to `~/Work/x-comment` if unset.
+Set `X_ENGAGE_DIR` in your environment (or this skill's caller config) to the absolute path of your local clone. Defaults to `~/Work/x-engage` if unset.
 
 ## Args
 
@@ -29,15 +29,15 @@ For each subcommand, run the matching script via Bash:
 
 | Arg | Command |
 |---|---|
-| `fetch` (default) | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment fetch` |
-| `review` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment review` |
-| `approve <ids>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment approve <ids>` |
-| `redraft <id>: <feedback>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment redraft <id> "<feedback>"` |
-| `kill <id>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment kill <id>` |
-| `good <id>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment good <id>` |
-| `publish` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment publish` |
-| `status` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment status` |
-| `setup` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment setup` |
+| `fetch` (default) | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage fetch` |
+| `review` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage review` |
+| `approve <ids>` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage approve <ids>` |
+| `redraft <id>: <feedback>` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage redraft <id> "<feedback>"` |
+| `kill <id>` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage kill <id>` |
+| `good <id>` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage good <id>` |
+| `publish` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage publish` |
+| `status` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage status` |
+| `setup` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage setup` |
 
 Stream output to the user. Use long timeout (600000ms) for `fetch` and `publish`.
 
@@ -70,7 +70,7 @@ Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, good <id>, o
 
 If output contains `ACCOUNT_PAUSED`, `RESTRICTION`, `CAPTCHA`, `LOGIN_REQUIRED`, or exit code 2 (from publish):
 - DO NOT retry. Halt.
-- Tell the user: "X account safety check failed. Open the screenshot at `~/Downloads/x-incident-*.png`. After confirming the account is healthy, delete `~/.x-comment/PAUSED` to resume."
+- Tell the user: "X account safety check failed. Open the screenshot at `~/Downloads/x-incident-*.png`. After confirming the account is healthy, delete `~/.x-engage/PAUSED` to resume."
 - Do not run any further X-touching commands until the user explicitly resumes.
 
 If output contains `COOKIES_EXPIRED` (from fetch, exit code 2):
@@ -79,15 +79,15 @@ If output contains `COOKIES_EXPIRED` (from fetch, exit code 2):
   1. Open x.com in Chrome, log out, log back in.
   2. DevTools (Cmd+Opt+I) → Application → Cookies → https://x.com
   3. Copy `auth_token` and `ct0` values into `.env` (replace old `AUTH_TOKEN=` and `CT0=` lines).
-  4. Delete `~/.x-comment/PAUSED` to resume.
-  Then run `/x-comment setup` to verify, and re-run fetch."
+  4. Delete `~/.x-engage/PAUSED` to resume.
+  Then run `/x-engage setup` to verify, and re-run fetch."
 - Do not run any further X-touching commands until the user has updated cookies and removed the PAUSED file.
 
 ## Unknown args
 
 If arg is not in the table above, print:
 ```
-Usage: /x-comment [fetch|review|approve|redraft|kill|good|publish|status|setup]
+Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup]
   fetch          — fetch candidates + draft + queue (default)
   review         — show pending drafts in chat
   approve <ids>  — mark drafts approved (e.g. "approve 1, 3" or "approve all")

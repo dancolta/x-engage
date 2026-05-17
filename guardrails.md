@@ -16,7 +16,7 @@ If `config/settings.yml` requests a value worse than the panic ceiling, code use
 ## Pre-publish account check
 
 Every `publish` run loads `x.com/home` first and scans for restriction language ("Your account is temporarily restricted", "We detected unusual activity", "Verify you're human", captcha challenges). If detected:
-- Write `~/.x-comment/PAUSED`
+- Write `~/.x-engage/PAUSED`
 - Screenshot to `~/Downloads/x-incident-<timestamp>.png`
 - Exit code 2 with stdout line `ACCOUNT_PAUSED: see screenshot`
 
@@ -38,14 +38,14 @@ Every `publish` run loads `x.com/home` first and scans for restriction language 
 
 ## Kill switches
 
-- `X_COMMENT_HALT=1` env var → instant exit at any pipeline stage
-- `~/.x-comment/PAUSED` file → instant exit on publish runs
+- `X_ENGAGE_HALT=1` env var → instant exit at any pipeline stage
+- `~/.x-engage/PAUSED` file → instant exit on publish runs
 - 3 publish failures within 1 hour → auto-write PAUSED flag
 - Any unexpected modal / captcha during Playwright → screenshot + write PAUSED flag
 
 ## Playwright safety
 
-- Single persistent Chromium profile (`~/.x-comment/chrome-profile/`)
+- Single persistent Chromium profile (`~/.x-engage/chrome-profile/`)
 - Default: **headless mode** (`playwright.headless: true` in `settings.yml`). `playwright-stealth` masks the headless signature. Flip to `false` only for the one-time X login or debugging.
 - Random scroll: 200–600px, 1.5–4s pauses
 - Type: 40–120ms/key, 5% chance of pause+correction, never paste

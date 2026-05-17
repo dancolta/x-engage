@@ -1,8 +1,8 @@
-# x-comment
+# x-engage
 
 > Authority-build automation for X (Twitter) — drafts replies in your voice, queues them for your approval in chat, then publishes via Playwright on your logged-in session.
 
-`x-comment` is a [Claude Code](https://claude.ai/code) skill that turns the reply-guy growth strategy into a reviewable pipeline. It fetches candidate posts from a list of tracked accounts and topic searches you define, drafts replies that match your voice profile, scores them against deterministic safety filters, and waits for your in-chat approval before posting anything.
+`x-engage` is a [Claude Code](https://claude.ai/code) skill that turns the reply-guy growth strategy into a reviewable pipeline. It fetches candidate posts from a list of tracked accounts and topic searches you define, drafts replies that match your voice profile, scores them against deterministic safety filters, and waits for your in-chat approval before posting anything.
 
 It is built for **personal-brand operators** who already publish on X and want disciplined daily reply activity without becoming a bot or babysitting a queue.
 
@@ -78,8 +78,8 @@ The reply-drafting voice is defined in `voice-profile.personal.md` (gitignored �
 ### 2. Install
 
 ```bash
-git clone https://github.com/YOUR-USER/x-comment.git
-cd x-comment
+git clone https://github.com/YOUR-USER/x-engage.git
+cd x-engage
 pip install -r requirements.txt
 playwright install chromium
 ```
@@ -137,7 +137,7 @@ python3 -c "
 from playwright.sync_api import sync_playwright
 from pathlib import Path
 import os
-profile = os.path.expanduser('~/.x-comment/chrome-profile')
+profile = os.path.expanduser('~/.x-engage/chrome-profile')
 Path(profile).mkdir(parents=True, exist_ok=True)
 with sync_playwright() as p:
     ctx = p.chromium.launch_persistent_context(profile, headless=False, viewport={'width':1280,'height':800})
@@ -151,7 +151,7 @@ with sync_playwright() as p:
 ### 6. Verify setup
 
 ```bash
-python3 -m scripts.x_comment setup
+python3 -m scripts.x_engage setup
 ```
 
 Expected output:
@@ -160,31 +160,31 @@ Expected output:
 [ok] node on PATH (required for bird-search)
 [ok] Notion env vars present
 [ok] claude CLI on PATH
-[info] Playwright profile dir: ~/.x-comment/chrome-profile
+[info] Playwright profile dir: ~/.x-engage/chrome-profile
 ```
 
 ## Usage
 
-The skill installs as `/x-comment` in Claude Code. From the CLI directly:
+The skill installs as `/x-engage` in Claude Code. From the CLI directly:
 
 | Command | What it does |
 |---|---|
-| `python3 -m scripts.x_comment fetch` | Pull candidates, draft, queue (also mirrors to Notion if enabled) |
-| `python3 -m scripts.x_comment review` | Show all pending drafts in chat-ready format |
-| `python3 -m scripts.x_comment approve <ids\|all>` | Mark drafts approved |
-| `python3 -m scripts.x_comment redraft <id> "<feedback>"` | Re-draft one row with your steer |
-| `python3 -m scripts.x_comment kill <id>` | Reject a draft |
-| `python3 -m scripts.x_comment good <id>` | Save a draft as a vibe reference for future drafting |
-| `python3 -m scripts.x_comment publish` | Ship approved drafts via Playwright |
-| `python3 -m scripts.x_comment status` | Counts, daily cap, paused state |
+| `python3 -m scripts.x_engage fetch` | Pull candidates, draft, queue (also mirrors to Notion if enabled) |
+| `python3 -m scripts.x_engage review` | Show all pending drafts in chat-ready format |
+| `python3 -m scripts.x_engage approve <ids\|all>` | Mark drafts approved |
+| `python3 -m scripts.x_engage redraft <id> "<feedback>"` | Re-draft one row with your steer |
+| `python3 -m scripts.x_engage kill <id>` | Reject a draft |
+| `python3 -m scripts.x_engage good <id>` | Save a draft as a vibe reference for future drafting |
+| `python3 -m scripts.x_engage publish` | Ship approved drafts via Playwright |
+| `python3 -m scripts.x_engage status` | Counts, daily cap, paused state |
 
 Typical day:
 
 ```
-$ /x-comment fetch
+$ /x-engage fetch
 fetch: drafted=4, skipped=11, rejected=2, candidates=17
 
-$ /x-comment review
+$ /x-engage review
 #a1b2c3d4  @builder_42 (12,400 followers) · 8min ago · score 0.91
   Source: "We doubled our revenue in 30 days using only AI."
   Draft:  "What was the baseline though. Doubling from 2k to 4k and from 200k to 400k are different conversations entirely."
@@ -195,17 +195,17 @@ $ /x-comment review
 
 Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, or publish
 
-$ /x-comment approve a1b2c3d4
-approve: marked 1 draft(s) approved. Run `/x-comment publish` to ship.
+$ /x-engage approve a1b2c3d4
+approve: marked 1 draft(s) approved. Run `/x-engage publish` to ship.
 
-$ /x-comment redraft e5f6g7h8: more direct, drop the comma splice
+$ /x-engage redraft e5f6g7h8: more direct, drop the comma splice
 redraft #e5f6g7h8: score 0.84
   Draft: "Depends on what you're building. The SaaS subscriptions stacking up in most teams are weekend-overnight territory now. Anything load-bearing for the business is still custom."
 
-$ /x-comment approve all
-approve: marked 1 draft(s) approved. Run `/x-comment publish` to ship.
+$ /x-engage approve all
+approve: marked 1 draft(s) approved. Run `/x-engage publish` to ship.
 
-$ /x-comment publish
+$ /x-engage publish
 publish: published=2, failed=0, deferred=0
 ```
 
@@ -214,9 +214,9 @@ publish: published=2, failed=0, deferred=0
 If you want the **draft phase** to fire automatically on a schedule (publish is always manual):
 
 ```bash
-cp assets/com.example.xcomment.fetch.plist ~/Library/LaunchAgents/
+cp assets/com.example.xengage.fetch.plist ~/Library/LaunchAgents/
 # edit the plist: replace path placeholders with your absolute paths
-launchctl load ~/Library/LaunchAgents/com.example.xcomment.fetch.plist
+launchctl load ~/Library/LaunchAgents/com.example.xengage.fetch.plist
 ```
 
 The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the highest-engagement windows on X per Buffer + Sprout data). Drafts accumulate in your queue. Publishing remains 100% manual.
@@ -250,7 +250,7 @@ Optional but recommended. The skill ships with `good-drafts.example.md`; copy it
 
 **How it works:**
 
-1. During `review`, when you see a draft you love, run `/x-comment good <id>` instead of (or in addition to) `approve`.
+1. During `review`, when you see a draft you love, run `/x-engage good <id>` instead of (or in addition to) `approve`.
 2. The skill appends that draft to `good-drafts.md` with auto-timestamp + author tag.
 3. On the next `fetch`, `voice.py` reads `good-drafts.md` and injects a **random 3 of N** examples into the drafter prompt as **vibe references only**.
 4. The prompt explicitly tells the drafter: *these are mood references, NOT templates to fill in*. The drafter must pick a different T1–T7 template than the examples.
@@ -279,8 +279,8 @@ The following are **hardcoded ceilings** in `guardrails.md` and `scripts/lib/con
 
 Kill switches:
 
-- `X_COMMENT_HALT=1` env var → halt at any pipeline stage
-- `~/.x-comment/PAUSED` file → halt on publish runs
+- `X_ENGAGE_HALT=1` env var → halt at any pipeline stage
+- `~/.x-engage/PAUSED` file → halt on publish runs
 - Any safety signal (captcha, restriction language, suspended account) detected during `publish` → auto-write `PAUSED`, screenshot to `~/Downloads/x-incident-*.png`, exit code 2
 
 ### Cookie expiry handling
@@ -288,7 +288,7 @@ Kill switches:
 X session cookies (`AUTH_TOKEN` + `CT0`) expire periodically. The skill detects two failure modes:
 
 1. **Missing cookies** (`.env` empty / `AUTH_TOKEN=` blank): `fetch` and `setup` both halt with a clear message. `setup` shows `[fail] X session cookies missing`.
-2. **X explicitly rejects the session** (401/403 in bird's response): `fetch` writes `~/.x-comment/PAUSED` with recovery instructions and exits code 2.
+2. **X explicitly rejects the session** (401/403 in bird's response): `fetch` writes `~/.x-engage/PAUSED` with recovery instructions and exits code 2.
 
 Recovery (whichever path triggered it):
 ```
@@ -296,8 +296,8 @@ Recovery (whichever path triggered it):
 2. DevTools (Cmd+Opt+I) → Application → Cookies → x.com
 3. Copy `auth_token` and `ct0` values
 4. Replace AUTH_TOKEN= and CT0= lines in .env
-5. rm ~/.x-comment/PAUSED   (only if it exists)
-6. /x-comment setup   (verify "[ok] bird authenticated via X")
+5. rm ~/.x-engage/PAUSED   (only if it exists)
+6. /x-engage setup   (verify "[ok] bird authenticated via X")
 ```
 
 Note: bird gracefully falls back to guest tokens when cookies are technically present but invalid. Search still works (with lower rate limits), so silent expiry won't break the tool — it'll just lose any session-specific advantages.
@@ -313,7 +313,7 @@ Note: bird gracefully falls back to guest tokens when cookies are technically pr
 
 ```
 scripts/
-├── x_comment.py            # CLI orchestrator
+├── x_engage.py            # CLI orchestrator
 └── lib/
     ├── config.py           # .env + YAML loader, panic ceilings, SSL bootstrap
     ├── log.py              # JSON line logger
@@ -341,7 +341,7 @@ SKILL.md                    # Claude Code skill manifest
 
 The "reply guy strategy" works. Top-performing X accounts in 2025–2026 grew via replies, not original posts (research summary: ~70% time on strategic replies to bigger accounts, ~30% original). But running it manually means 30–60 min/day of disciplined attention better spent building. Existing tools (scheduling-first products like Hypefury, Tweet Hunter, Typefully, Postwise) don't help with the actual reply-composition bottleneck.
 
-`x-comment` automates the bottleneck (drafting + filtering) and keeps the part that should never be automated (judgment) in human hands.
+`x-engage` automates the bottleneck (drafting + filtering) and keeps the part that should never be automated (judgment) in human hands.
 
 ## License
 
