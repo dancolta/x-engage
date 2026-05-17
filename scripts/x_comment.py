@@ -252,6 +252,64 @@ def cmd_kill(args: list[str]) -> int:
     return 0 if ok else 1
 
 
+# --- good (promote a draft to good-drafts.md as a vibe reference) ---
+
+GOOD_DRAFTS_FILE = Path(__file__).resolve().parents[1] / "good-drafts.md"
+GOOD_DRAFTS_MAX = 25  # FIFO ceiling — drop oldest entry when this is exceeded
+
+
+def cmd_good(args: list[str]) -> int:
+    """Append a draft to good-drafts.md as a vibe reference for future drafting.
+
+    Usage: /x-comment good <draft_id>
+
+    The drafter will read good-drafts.md at draft time and inject a random 3 of N
+    examples as VIBE references (not templates to copy). The safety lint rejects
+    new drafts with >30% 4-gram overlap with any example, so the file grows your
+    voice signal without causing copy-paste outputs.
+    """
+    import datetime as _dt
+    if not args:
+        print("good: pass a draft id (e.g. `good 1a2b`)")
+        return 1
+    tid = args[0].strip("#")
+    row = state.get_draft(tid)
+    if not row:
+        print(f"good: no draft with id {tid}")
+        return 1
+    draft_text = (row.get("draft") or "").strip()
+    if not draft_text:
+        print(f"good: draft #{tid} has no body")
+        return 1
+    author = row.get("source_author") or "unknown"
+    today = _dt.date.today().isoformat()
+
+    GOOD_DRAFTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    existing = GOOD_DRAFTS_FILE.read_text() if GOOD_DRAFTS_FILE.exists() else (
+        "# Good drafts — vibe reference (NOT structural templates)\n"
+        "# See good-drafts.example.md for format. The CLI appends entries here.\n\n"
+    )
+    new_entry = f"## {today} · T? · re @{author}\n{draft_text}\n\n"
+    combined = existing.rstrip() + "\n\n" + new_entry
+
+    # FIFO trim: keep only the last GOOD_DRAFTS_MAX `## ` entries
+    import re as _re
+    parts = _re.split(r"(?m)^(## .+)$", combined)
+    # parts = [preamble, header1, body1, header2, body2, ...]
+    if len(parts) > 1:
+        preamble = parts[0]
+        headers_bodies = list(zip(parts[1::2], parts[2::2]))
+        if len(headers_bodies) > GOOD_DRAFTS_MAX:
+            dropped = len(headers_bodies) - GOOD_DRAFTS_MAX
+            headers_bodies = headers_bodies[-GOOD_DRAFTS_MAX:]
+            print(f"good: trimmed {dropped} oldest entry/entries (cap: {GOOD_DRAFTS_MAX})")
+        combined = preamble + "".join(h + b for h, b in headers_bodies)
+
+    GOOD_DRAFTS_FILE.write_text(combined.rstrip() + "\n")
+    print(f"good: added #{tid} to {GOOD_DRAFTS_FILE.name} (now {len(_re.findall(r'(?m)^## ', combined))} entries)")
+    return 0
+
+
 # --- publish ---
 
 def cmd_publish() -> int:
@@ -362,13 +420,14 @@ def main() -> int:
         "approve": lambda: cmd_approve(rest),
         "redraft": lambda: cmd_redraft(rest),
         "kill": lambda: cmd_kill(rest),
+        "good": lambda: cmd_good(rest),
         "publish": lambda: cmd_publish(),
         "status": lambda: cmd_status(),
         "setup": lambda: cmd_setup(),
     }
     if cmd not in table:
         print(f"Unknown command: {cmd}")
-        print("Usage: x_comment [fetch|review|approve|redraft|kill|publish|status|setup]")
+        print("Usage: x_comment [fetch|review|approve|redraft|kill|good|publish|status|setup]")
         return 1
     return table[cmd]()
 

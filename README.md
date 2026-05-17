@@ -174,6 +174,7 @@ The skill installs as `/x-comment` in Claude Code. From the CLI directly:
 | `python3 -m scripts.x_comment approve <ids\|all>` | Mark drafts approved |
 | `python3 -m scripts.x_comment redraft <id> "<feedback>"` | Re-draft one row with your steer |
 | `python3 -m scripts.x_comment kill <id>` | Reject a draft |
+| `python3 -m scripts.x_comment good <id>` | Save a draft as a vibe reference for future drafting |
 | `python3 -m scripts.x_comment publish` | Ship approved drafts via Playwright |
 | `python3 -m scripts.x_comment status` | Counts, daily cap, paused state |
 
@@ -242,6 +243,28 @@ Two files by design:
 - **`x-overlay.md`** — *platform constraints*. Length floor, opener rotation, banned shapes derived from May 2026 X research. Edit when X behavior changes; don't touch your voice file.
 
 This split lets you tune voice without breaking guardrails, and guardrails without breaking voice.
+
+### `good-drafts.md` — vibe-reference learning loop
+
+Optional but recommended. The skill ships with `good-drafts.example.md`; copy it to `good-drafts.md` (gitignored) and the drafter will start learning from your taste.
+
+**How it works:**
+
+1. During `review`, when you see a draft you love, run `/x-comment good <id>` instead of (or in addition to) `approve`.
+2. The skill appends that draft to `good-drafts.md` with auto-timestamp + author tag.
+3. On the next `fetch`, `voice.py` reads `good-drafts.md` and injects a **random 3 of N** examples into the drafter prompt as **vibe references only**.
+4. The prompt explicitly tells the drafter: *these are mood references, NOT templates to fill in*. The drafter must pick a different T1–T7 template than the examples.
+5. A 4-gram overlap lint in `safety.py` rejects any new draft that copies >30% of any example's wording — mechanical guard against the copy-paste failure mode.
+6. File auto-trims to the most recent 25 entries (FIFO) — your taste evolves, oldest examples drop.
+
+**Why this won't degrade quality:**
+
+- Few-shot examples are the highest-leverage prompt-engineering technique (per [Anthropic's multishot prompting guide](https://docs.claude.com/en/docs/build-with-claude/prompt-engineering/multishot-prompting)). 3–5 examples ≫ 1 example, with diminishing returns past 5–7.
+- Random subsetting prevents structure lock-in.
+- The 4-gram overlap lint is a deterministic post-draft check — no LLM judgment, fully auditable.
+- Falls back gracefully: if `good-drafts.md` doesn't exist, drafter runs unchanged.
+
+You can also create `bad-drafts.md` later for negative examples (anti-patterns the drafter should avoid). Same parser, same gitignore.
 
 ## Safety knobs
 

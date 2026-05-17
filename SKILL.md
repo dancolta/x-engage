@@ -18,6 +18,7 @@ Parse the first word of the user's input as the subcommand:
 - `approve <ids|all>` → mark drafts approved (e.g. `approve 1, 3, 5` or `approve all`)
 - `redraft <id>: <feedback>` → re-run drafter for one row with the user's steer (e.g. `redraft 2: shorter, drop the question`)
 - `kill <id>` → reject and remove from queue
+- `good <id>` → promote a draft to `good-drafts.md` as a vibe reference for future drafting (the drafter injects random examples; a 4-gram overlap lint prevents copy-paste outputs)
 - `publish` → ship every draft with status=approved via Playwright
 - `status` → counts, today's published, daily-cap usage, cooldown view, paused state
 - `setup` → first-time install: verify xurl auth, verify Notion, verify claude CLI, log into X via Playwright
@@ -33,6 +34,7 @@ For each subcommand, run the matching script via Bash:
 | `approve <ids>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment approve <ids>` |
 | `redraft <id>: <feedback>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment redraft <id> "<feedback>"` |
 | `kill <id>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment kill <id>` |
+| `good <id>` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment good <id>` |
 | `publish` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment publish` |
 | `status` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment status` |
 | `setup` | `cd "$X_COMMENT_DIR" && python3 -m scripts.x_comment setup` |
@@ -58,7 +60,7 @@ Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, or publish
 
 - `fetch`: pulled / drafted / skipped counts. Mention Notion DB URL if mirror is enabled.
 - `review`: show drafts as above; do not summarize
-- `approve / redraft / kill`: confirm action in 1 line ("Approved #1, #3", "Redrafting #2…", "Killed #4")
+- `approve / redraft / kill / good`: confirm action in 1 line ("Approved #1, #3", "Redrafting #2…", "Killed #4", "Saved #5 as vibe reference")
 - `publish`: published / failed / deferred counts. Surface any safety signals
 - `status`: phase, today's count vs cap, paused state, queue counts
 
@@ -83,12 +85,13 @@ If output contains `COOKIES_EXPIRED` (from fetch, exit code 2):
 
 If arg is not in the table above, print:
 ```
-Usage: /x-comment [fetch|review|approve|redraft|kill|publish|status|setup]
+Usage: /x-comment [fetch|review|approve|redraft|kill|good|publish|status|setup]
   fetch          — fetch candidates + draft + queue (default)
   review         — show pending drafts in chat
   approve <ids>  — mark drafts approved (e.g. "approve 1, 3" or "approve all")
   redraft <id>   — re-draft one with feedback (e.g. "redraft 2: shorter")
   kill <id>      — reject a draft
+  good <id>      — save a draft as a vibe reference for future drafting
   publish        — ship approved drafts via Playwright
   status         — counts, daily cap, paused state
   setup          — first-time setup

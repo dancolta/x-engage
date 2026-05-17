@@ -9,6 +9,14 @@ take effect without a restart.
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+GOOD_DRAFTS = ROOT / "good-drafts.md"
+
+# Reject draft if its 4-gram overlap with any good-draft example exceeds this ratio.
+# 0.30 = "more than 30% of the draft's 4-grams appear in a single example" → too close.
+GOOD_DRAFT_OVERLAP_THRESHOLD = 0.30
 
 BANNED_OPENERS = (
     "great post", "this!", "this.", "couldn't agree more", "100%",
@@ -106,7 +114,76 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str]) -> 
         if opener_key == prev_key:
             return False, "opener repeats a recent reply"
 
+    # --- good-draft overlap (anti-copy lint) ---
+    overlap_ratio, matched = _max_good_draft_overlap(text)
+    if overlap_ratio > GOOD_DRAFT_OVERLAP_THRESHOLD:
+        return False, f"copies good-draft example ({overlap_ratio:.0%} 4-gram overlap with: {matched[:60]!r})"
+
     return True, ""
+
+
+_GOOD_DRAFTS_CACHE: list[str] | None = None
+_GOOD_DRAFTS_MTIME: float = 0.0
+
+
+def _load_good_drafts_for_lint() -> list[str]:
+    """Cached read of good-drafts.md bodies for overlap-check use."""
+    global _GOOD_DRAFTS_CACHE, _GOOD_DRAFTS_MTIME
+    if not GOOD_DRAFTS.exists():
+        _GOOD_DRAFTS_CACHE = []
+        return []
+    mtime = GOOD_DRAFTS.stat().st_mtime
+    if _GOOD_DRAFTS_CACHE is not None and mtime == _GOOD_DRAFTS_MTIME:
+        return _GOOD_DRAFTS_CACHE
+    bodies: list[str] = []
+    try:
+        text = GOOD_DRAFTS.read_text()
+        for header_match in re.finditer(r"(?m)^## .+$", text):
+            rest = text[header_match.end():]
+            for line in rest.splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                bodies.append(stripped)
+                break
+    except Exception:
+        bodies = []
+    _GOOD_DRAFTS_CACHE = bodies
+    _GOOD_DRAFTS_MTIME = mtime
+    return bodies
+
+
+def _ngrams(text: str, n: int = 4) -> set[tuple[str, ...]]:
+    tokens = re.findall(r"\w+", text.lower())
+    if len(tokens) < n:
+        return set()
+    return {tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1)}
+
+
+def _max_good_draft_overlap(draft: str) -> tuple[float, str]:
+    """Return (max 4-gram overlap ratio, matched example) across all examples.
+
+    Ratio is |draft_4grams INTERSECT example_4grams| / |draft_4grams|. Returns
+    (0.0, "") if no examples loaded or draft too short for 4-grams.
+    """
+    examples = _load_good_drafts_for_lint()
+    if not examples:
+        return 0.0, ""
+    draft_grams = _ngrams(draft, 4)
+    if not draft_grams:
+        return 0.0, ""
+    best_ratio = 0.0
+    best_match = ""
+    for ex in examples:
+        ex_grams = _ngrams(ex, 4)
+        if not ex_grams:
+            continue
+        shared = draft_grams & ex_grams
+        ratio = len(shared) / len(draft_grams)
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = ex
+    return best_ratio, best_match
 
 
 def _is_negation_reframe(text: str) -> bool:

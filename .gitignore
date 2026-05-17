@@ -13,6 +13,10 @@ chrome-profile/
 # Personal voice file (gitignored override; preferred by voice.py if present)
 voice-profile.personal.md
 
+# Personal good/bad-draft reference banks (gitignored; loaded by voice.py if present)
+good-drafts.md
+bad-drafts.md
+
 # Local-only planning / notes (not for the public repo)
 PLAN.md
 PLAN.local.md

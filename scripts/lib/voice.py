@@ -5,6 +5,7 @@ Scoring is a lightweight heuristic; the LLM does the heavy lifting on tone.
 
 from __future__ import annotations
 
+import random
 import re
 import subprocess
 from pathlib import Path
@@ -15,12 +16,63 @@ ROOT = Path(__file__).resolve().parents[2]
 VOICE_PROFILE = ROOT / "voice-profile.md"
 VOICE_PROFILE_PERSONAL = ROOT / "voice-profile.personal.md"
 X_OVERLAY = ROOT / "x-overlay.md"
+GOOD_DRAFTS = ROOT / "good-drafts.md"
+
+# How many good-draft examples to inject per call (random subset, prevents lock-in)
+GOOD_DRAFTS_INJECT_K = 3
 
 
 def _load_prompt_assets() -> tuple[str, str]:
     # Prefer a local-only personal override if present (gitignored)
     voice_path = VOICE_PROFILE_PERSONAL if VOICE_PROFILE_PERSONAL.exists() else VOICE_PROFILE
     return voice_path.read_text(), X_OVERLAY.read_text()
+
+
+def _parse_good_drafts(text: str) -> list[str]:
+    """Extract reply bodies from good-drafts.md.
+
+    Format: `## YYYY-MM-DD · T<n> · re @<author> on <topic>` header followed by
+    one body line. Skip comment lines, headers, and blanks.
+    """
+    out: list[str] = []
+    for header_match in re.finditer(r"(?m)^## .+$", text):
+        # Body is the first non-blank, non-comment line after the header
+        rest = text[header_match.end():]
+        for line in rest.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            out.append(stripped)
+            break
+    return out
+
+
+def _load_good_drafts_block() -> str:
+    """Return a prompt block with K random good-draft examples, or empty string.
+
+    Examples are framed explicitly as vibe references, NOT structural templates,
+    to prevent the drafter from copying sentence shapes.
+    """
+    if not GOOD_DRAFTS.exists():
+        return ""
+    try:
+        all_examples = _parse_good_drafts(GOOD_DRAFTS.read_text())
+    except Exception as e:
+        log.warn("good_drafts_parse_failed", error=str(e))
+        return ""
+    if not all_examples:
+        return ""
+    sample = random.sample(all_examples, k=min(GOOD_DRAFTS_INJECT_K, len(all_examples)))
+    lines = "\n".join(f"- {s}" for s in sample)
+    return (
+        "# Vibe references — replies Dan previously rated as 'good'\n\n"
+        "These show the ENERGY and SPECIFICITY level to aim for. They are NOT "
+        "templates to fill in. DO NOT copy any phrase, opener, or sentence shape "
+        "from these examples — the safety lint will reject drafts with too much "
+        "overlap. Each example uses one of T1-T7. Pick a DIFFERENT template than "
+        "any of these examples for your new draft.\n\n"
+        f"{lines}\n"
+    )
 
 
 PROMPT_TEMPLATE = """{voice_profile}
@@ -30,6 +82,8 @@ PROMPT_TEMPLATE = """{voice_profile}
 {x_overlay}
 
 ---
+
+{good_drafts_block}
 
 # Source post you are replying to
 
@@ -52,6 +106,7 @@ def draft_reply(*, source_text: str, author: str, followers: int, age_min: int,
                 feedback: str | None = None) -> str:
     """Call the Claude CLI with voice + overlay + source post. Returns raw output."""
     voice, overlay = _load_prompt_assets()
+    good_drafts_block = _load_good_drafts_block()
     feedback_block = ""
     if feedback:
         feedback_block = (
@@ -61,6 +116,7 @@ def draft_reply(*, source_text: str, author: str, followers: int, age_min: int,
     prompt = PROMPT_TEMPLATE.format(
         voice_profile=voice,
         x_overlay=overlay,
+        good_drafts_block=good_drafts_block,
         author=author,
         followers=followers,
         age_min=age_min,
