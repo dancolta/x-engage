@@ -29,6 +29,23 @@ def _load_env() -> None:
 _load_env()
 
 
+def _bootstrap_ssl_certs() -> None:
+    """Python 3.13 on macOS sometimes ships without a working cert bundle.
+    Point urllib at certifi if SSL_CERT_FILE isn't already set.
+    """
+    if os.environ.get("SSL_CERT_FILE"):
+        return
+    try:
+        import certifi
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+    except ImportError:
+        pass
+
+
+_bootstrap_ssl_certs()
+
+
 def _load_yaml(name: str) -> dict[str, Any]:
     """Load config/<name>.yml; fall back to config/<name>.example.yml if missing."""
     primary = ROOT / "config" / f"{name}.yml"

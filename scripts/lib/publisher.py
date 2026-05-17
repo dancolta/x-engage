@@ -85,6 +85,10 @@ def publish_batch(rows: list[dict[str, Any]], settings: dict[str, Any]) -> dict[
         log.warn("stealth_missing", hint="pip install playwright-stealth for fingerprint hardening")
 
     min_gap = int(settings.get("min_gap_between_publishes_sec", 90))
+    pw_cfg = settings.get("playwright") or {}
+    # Default to headless. Set `playwright.headless: false` in settings.yml to
+    # see the browser (useful for one-time login or debugging).
+    headless = bool(pw_cfg.get("headless", True))
     profile = _profile_dir()
     published = 0
     failed = 0
@@ -93,7 +97,7 @@ def publish_batch(rows: list[dict[str, Any]], settings: dict[str, Any]) -> dict[
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=str(profile),
-            headless=False,
+            headless=headless,
             args=["--disable-blink-features=AutomationControlled"],
             viewport={"width": 1280, "height": 800},
         )

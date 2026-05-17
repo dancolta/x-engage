@@ -47,6 +47,11 @@ notion:
 log_level: INFO                # DEBUG | INFO | WARN | ERROR
 log_dir: ./logs
 
+# Playwright (browser automation for publishing)
+playwright:
+  headless: true                  # true = no browser window opens (recommended for scheduled runs)
+                                  # false = visible browser (useful for one-time X login + debugging)
+
 # Safety
 require_explicit_approval: true   # publish.py refuses to ship anything not chat-approved
                                   # ALWAYS keep this true. Code refuses to flip it via config.

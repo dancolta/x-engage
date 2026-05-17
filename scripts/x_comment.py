@@ -16,6 +16,21 @@ from scripts.lib import config, log, state, voice, safety, notion_mirror
 from scripts.lib.fetch import fetch_candidates
 
 
+def _author(item) -> str:
+    return (item.author or "").lstrip("@").strip()
+
+
+def _followers(item) -> int:
+    eng = item.engagement or {}
+    for k in ("followers", "author_followers", "follower_count"):
+        if k in eng:
+            try:
+                return int(eng[k] or 0)
+            except (TypeError, ValueError):
+                continue
+    return 0
+
+
 # --- Helpers ---
 
 def _check_halted() -> None:
@@ -64,29 +79,34 @@ def cmd_fetch() -> int:
     rejected = 0
     recent_openers = state.recent_openers(limit=5)
 
-    for tweet in candidates:
+    for item in candidates:
         if drafted >= capacity:
             break
-        state.mark_seen(tweet.id)
-        if state.lifetime_replies_to(tweet.author_handle, within_days=30) >= 4:
+        state.mark_seen(item.item_id)
+        author = _author(item)
+        followers = _followers(item)
+        age_min = int(item.metadata.get("age_min") or 0)
+        source_text = item.body or item.title or ""
+
+        if state.lifetime_replies_to(author.lower(), within_days=30) >= 4:
             skipped += 1
             continue
 
         draft = voice.draft_reply(
-            source_text=tweet.text,
-            author=tweet.author_handle,
-            followers=tweet.author_followers,
-            age_min=int(tweet.age_minutes),
+            source_text=source_text,
+            author=author,
+            followers=followers,
+            age_min=age_min,
         )
         if draft.strip().upper() == "SKIP" or not draft.strip():
             skipped += 1
             continue
 
         passes, reason = safety.lint_draft(
-            draft, source_author=tweet.author_handle, recent_openers=recent_openers,
+            draft, source_author=author, recent_openers=recent_openers,
         )
         if not passes:
-            log.info("draft_rejected", reason=reason, tweet_id=tweet.id)
+            log.info("draft_rejected", reason=reason, tweet_id=item.item_id)
             rejected += 1
             continue
 
@@ -97,12 +117,12 @@ def cmd_fetch() -> int:
             continue
 
         draft_id = state.insert_draft(
-            source_id=tweet.id,
-            source_url=tweet.url,
-            source_author=tweet.author_handle,
-            source_text=tweet.text,
-            source_followers=tweet.author_followers,
-            source_age_min=int(tweet.age_minutes),
+            source_id=item.item_id,
+            source_url=item.url or "",
+            source_author=author,
+            source_text=source_text,
+            source_followers=followers,
+            source_age_min=age_min,
             draft=draft,
             score=score,
         )
@@ -278,13 +298,20 @@ def cmd_status() -> int:
 # --- setup ---
 
 def cmd_setup() -> int:
-    """Lightweight setup check: xurl auth, Notion creds, claude CLI, profile dir."""
-    from scripts.lib import x_api
+    """Lightweight setup check: xAI API key, Notion creds, claude CLI, profile dir."""
     ok = True
-    if x_api.is_available():
-        print("[ok] xurl authenticated")
+    if config.env("AUTH_TOKEN") and config.env("CT0"):
+        print("[ok] X session cookies (AUTH_TOKEN + CT0) present")
     else:
-        print("[fail] xurl not installed or not authenticated. Install from https://github.com/xdevplatform/xurl/releases, then `xurl auth apps add <name> --client-id ... --client-secret ...` and `xurl auth oauth2`.")
+        print("[fail] X session cookies missing. Grab auth_token + ct0 from x.com DevTools "
+              "(Application → Cookies → x.com) and add to .env as AUTH_TOKEN + CT0.")
+        ok = False
+    # Verify Node is available for the vendored bird-search subprocess
+    import shutil
+    if shutil.which("node"):
+        print("[ok] node on PATH (required for bird-search)")
+    else:
+        print("[fail] node not found. Install Node.js 22+ (the bird-search reader runs on Node).")
         ok = False
     if config.env("NOTION_TOKEN") and config.env("NOTION_DB_ID"):
         print("[ok] Notion env vars present")

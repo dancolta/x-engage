@@ -46,7 +46,7 @@ Every `publish` run loads `x.com/home` first and scans for restriction language 
 ## Playwright safety
 
 - Single persistent Chromium profile (`~/.x-comment/chrome-profile/`)
-- Headed (not headless) to match human session
+- Default: **headless mode** (`playwright.headless: true` in `settings.yml`). `playwright-stealth` masks the headless signature. Flip to `false` only for the one-time X login or debugging.
 - Random scroll: 200–600px, 1.5–4s pauses
 - Type: 40–120ms/key, 5% chance of pause+correction, never paste
 - No proxy, no IP rotation, no profile-dir swapping

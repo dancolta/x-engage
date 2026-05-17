@@ -26,28 +26,41 @@ If your account is a critical business asset and you're not okay with any increm
 ## What it does
 
 ```
-┌─ Filter 1: tracked accounts you watch closely ─┐
-│                                                │
-├─ Filter 2: keyword/topic searches via X API ───┤
-│                                                │
-▼                                                ▼
-        candidates (newest-first, 5–60 min old)
+Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
                        │
                        ▼
-            voice + overlay + Claude CLI
+       For each subquery:
+         bird_x.search_x()       ← X GraphQL via your session cookies, free, minute-precision timestamps
+       → parse_bird_response() (+ timestamp preservation shim)
+       → normalize_source_items()
+       → signals.annotate_stream()    (relevance + freshness + engagement)
+       → signals.prune_low_relevance()
+       → dedupe.dedupe_items()
+       → snippet.extract_best_snippet()
                        │
                        ▼
-            safety lint + voice score
+       Cross-subquery dedup + sort by local_rank_score
+                       │
+                       ▼
+       Age window (5–60 min) + cooldown + seen-posts + follower bounds
+                       │
+                       ▼
+       voice-profile.md + x-overlay.md + Claude CLI → draft reply
+                       │
+                       ▼
+       safety lint + voice score
                        │
                        ▼
        SQLite queue ◄──┼──► Notion mirror (log only, optional)
                        │
                        ▼
-        you, in chat: review · approve · redraft · kill
+       you, in chat: review · approve · redraft · kill
                        │
                        ▼
-        Playwright posts to X (headed, humanized)
+       Playwright posts to X (headed, humanized)
 ```
+
+The discovery pipeline (`bird_x → normalize → signals → dedupe → snippet`) is vendored verbatim from the [`last30days`](https://github.com/YOUR-USER/last30days) skill into `scripts/lib/vendor/l30d/`, so candidate quality and ranking match what `/last30days` produces for X. Bird uses your browser session cookies (`AUTH_TOKEN` + `CT0` from `.env`) and runs as a Node subprocess — same auth model as your Playwright posting setup, zero API cost.
 
 The reply-drafting voice is defined in `voice-profile.md` (or a local `voice-profile.personal.md` override). `x-overlay.md` layers X-specific constraints on top — character minimums, opener rotation, banned spam triggers, constructive-tone requirement (the Jan 2026 Grok ranker actively suppresses combative replies regardless of engagement).
 
@@ -57,9 +70,9 @@ The reply-drafting voice is defined in `voice-profile.md` (or a local `voice-pro
 
 - macOS (the launchd plist is mac-flavored; on Linux swap for cron / systemd)
 - Python 3.10+
+- Node.js 22+ (the vendored `bird-search` reader runs on Node)
 - [Claude Code](https://claude.ai/code) CLI on PATH
-- [xurl](https://github.com/xdevplatform/xurl) for X API reads (free)
-- A free X Developer App so xurl can authenticate (OAuth 2.0 Client ID + Secret)
+- A logged-in X account — you'll copy two session cookies (`auth_token` and `ct0`) into `.env`. **No paid API needed.**
 - A Notion integration token + a database (optional — set `mirror_enabled: false` to skip)
 
 ### 2. Install
@@ -69,22 +82,24 @@ git clone https://github.com/YOUR-USER/x-comment.git
 cd x-comment
 pip install -r requirements.txt
 playwright install chromium
-
-# Install xurl: download the binary from https://github.com/xdevplatform/xurl/releases
-# Then:
-xurl auth apps add my-app --client-id <YOUR_CLIENT_ID> --client-secret <YOUR_CLIENT_SECRET> \
-  --redirect-uri http://localhost:8080/callback
-xurl auth oauth2
 ```
 
 ### 3. Configure
 
 ```bash
-cp .env.example .env                              # add NOTION_TOKEN, NOTION_DB_ID (optional)
+cp .env.example .env                              # add AUTH_TOKEN + CT0 (required) + NOTION_TOKEN/NOTION_DB_ID (optional)
 cp config/accounts.example.yml config/accounts.yml
 cp config/topics.example.yml   config/topics.yml
 cp config/settings.example.yml config/settings.yml
 ```
+
+To grab `AUTH_TOKEN` and `CT0`:
+1. Open **x.com** in Chrome, logged in
+2. DevTools (Cmd+Opt+I) → **Application** tab → **Cookies → https://x.com**
+3. Copy the **Value** column for `auth_token` (~40 chars) and `ct0` (~160 chars)
+4. Paste into `.env` as `AUTH_TOKEN=...` and `CT0=...`
+
+Cookies expire when you log out of x.com. Re-grab if `bird-search` starts returning empty results.
 
 Edit each file:
 
@@ -115,6 +130,8 @@ Share the DB with your Notion integration. Copy the DB ID from the URL into `.en
 
 ### 5. Log in to X once (in the persistent profile Playwright will reuse)
 
+This is the only time the browser opens visibly — after login, all subsequent publish runs are headless.
+
 ```bash
 python3 -c "
 from playwright.sync_api import sync_playwright
@@ -139,7 +156,8 @@ python3 -m scripts.x_comment setup
 
 Expected output:
 ```
-[ok] xurl authenticated
+[ok] X session cookies (AUTH_TOKEN + CT0) present
+[ok] node on PATH (required for bird-search)
 [ok] Notion env vars present
 [ok] claude CLI on PATH
 [info] Playwright profile dir: ~/.x-comment/chrome-profile
@@ -255,15 +273,18 @@ Kill switches:
 scripts/
 ├── x_comment.py            # CLI orchestrator
 └── lib/
-    ├── config.py           # .env + YAML loader, panic ceilings
+    ├── config.py           # .env + YAML loader, panic ceilings, SSL bootstrap
     ├── log.py              # JSON line logger
-    ├── x_api.py            # xurl wrapper (read-only X API)
-    ├── fetch.py            # Filter 1 + Filter 2 → candidates
+    ├── fetch.py            # Discovery pipeline (bird → normalize → signals → dedupe)
     ├── voice.py            # Claude CLI drafter + heuristic scorer
     ├── safety.py           # Deterministic lint (banned shapes)
     ├── state.py            # SQLite: drafts, cooldowns, seen, openers
     ├── notion_mirror.py    # Notion log (not approval surface)
-    └── publisher.py        # Playwright publish + safety scan
+    ├── publisher.py        # Playwright publish + safety scan
+    └── vendor/
+        ├── l30d/            # /last30days pipeline (verbatim): bird_x, normalize,
+        │                    # signals, dedupe, snippet, relevance, schema, etc.
+        └── l30d/vendor/bird-search/   # Node lib that reads X via session cookies
 config/
 ├── *.example.yml           # tracked exemplars
 └── *.yml                   # gitignored, your real config
