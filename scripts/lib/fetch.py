@@ -21,11 +21,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import config, log, state
+from . import claude_client, config, log, state
 from .vendor.l30d import (
     bird_x,
     dedupe as _dedupe,
     normalize as _normalize,
+    planner as _planner,
     relevance as _relevance,
     schema as _schema,
     signals as _signals,
@@ -39,22 +40,66 @@ SourceItem = _schema.SourceItem
 def _build_subqueries() -> list[tuple[str, str]]:
     """Return [(label, search_query), ...].
 
-    Tracked accounts → `from:@handle` subqueries.
-    Topics → each `queries:` entry becomes its own subquery, labelled by topic name.
+    - Tracked accounts → `from:@handle` subqueries (no planner expansion needed).
+    - Topics → each user-provided query becomes a subquery. If planner.enabled
+      is true and the claude CLI is available, ALSO call planner.plan_query()
+      per topic to get LLM-expanded semantic variants. The user's manual queries
+      and the planner's variants are deduped before searching.
     """
+    settings = config.settings()
+    planner_cfg = settings.get("planner") or {}
+    planner_enabled = bool(planner_cfg.get("enabled", True))
+    planner_model = str(planner_cfg.get("model") or "claude-sonnet-4-6")
+    planner_depth = str(planner_cfg.get("depth") or "default")
+
     subs: list[tuple[str, str]] = []
+    seen_queries: set[str] = set()
+
+    def _add(label: str, q: str) -> None:
+        key = q.strip().lower()
+        if key and key not in seen_queries:
+            seen_queries.add(key)
+            subs.append((label, q.strip()))
+
+    # Tracked accounts
     acc_cfg = config.accounts()
     for entry in (acc_cfg.get("accounts") or []):
         handle = entry.get("handle") if isinstance(entry, dict) else entry
         if handle:
-            subs.append((f"account:{handle}", f"from:{handle}"))
+            _add(f"account:{handle}", f"from:{handle}")
 
+    # Topics — manual + planner-expanded
+    provider = claude_client.build_provider() if planner_enabled else None
     topic_cfg = config.topics()
     for topic in (topic_cfg.get("topics") or []):
         name = str(topic.get("name") or "?")
-        for q in (topic.get("queries") or []):
-            if q:
-                subs.append((name, str(q)))
+        user_queries = [str(q) for q in (topic.get("queries") or []) if q]
+        # Always include user-provided queries first
+        for q in user_queries:
+            _add(name, q)
+        # Planner expansion: ask Claude CLI to expand the topic into semantic variants
+        if provider:
+            try:
+                plan = _planner.plan_query(
+                    topic=name + (" — " + ", ".join(user_queries) if user_queries else ""),
+                    available_sources=["x"],
+                    requested_sources=["x"],
+                    depth=planner_depth,
+                    provider=provider,
+                    model=planner_model,
+                    internal_subrun=True,
+                )
+                added = 0
+                for sq in (plan.subqueries or []):
+                    sq_text = (sq.search_query or "").strip()
+                    if sq_text:
+                        before = len(subs)
+                        _add(name, sq_text)
+                        if len(subs) > before:
+                            added += 1
+                log.info("planner_expansion", topic=name, added=added)
+            except Exception as e:
+                log.warn("planner_failed", topic=name, err=str(e))
     return subs
 
 

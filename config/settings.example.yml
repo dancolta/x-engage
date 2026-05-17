@@ -31,6 +31,14 @@ drafter:
   model: claude-sonnet-4-6     # use sonnet for drafts (faster, cheaper than opus)
   max_redraft_attempts: 2      # per-draft redraft attempts before SKIP
 
+# Planner — LLM-driven query expansion via the claude CLI.
+# When enabled, each topic in topics.yml gets expanded into N semantic variants
+# (in addition to the variants you write manually). Same engine /last30days uses.
+planner:
+  enabled: true                # set false to use only your manual queries
+  model: claude-sonnet-4-6
+  depth: default               # quick | default | deep — more = more subqueries per topic
+
 # Custom banlist — terms that auto-reject any draft containing them.
 # Put competitor names, ex-employer names, taboo topics, etc.
 # Case-insensitive substring match.
