@@ -1,6 +1,6 @@
 ---
 name: x-comment
-description: X (Twitter) reply auto-drafter and chat-approval publisher. Fetches candidate posts from tracked accounts and topic searches via the X API (xurl), drafts replies in your voice via the Claude CLI, and stores them in SQLite + Notion (Notion as log). You approve drafts in-chat via natural-language commands. On `publish`, ships approved drafts via Playwright on a logged-in X session. Triggers on "/x-comment", "x-comment", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status".
+description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-comment", "x-comment", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status".
 ---
 
 # /x-comment

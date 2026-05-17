@@ -2,17 +2,30 @@
 
 This file holds X-platform constraints derived from May 2026 research (Grok ranker behavior, opener spam-heuristics, reply-length impact data). Edit this file to tune X-specific behavior. Edit `voice-profile.md` (or `voice-profile.personal.md`) to tune voice. Keep them separate so you can tune one without breaking the other.
 
-## Length
+## Length — two-band model (data-backed, May 2026)
 
-- **Minimum: 80 characters.** Replies under 80 chars get less impression weight on X and read as low-effort. Hard floor.
-- **Maximum: 280 characters** (X reply limit).
-- **Sweet spot: 120–200 characters.** Long enough to add value, short enough to read on mobile in one glance.
+X engagement data shows a **bimodal** distribution. Avoid the no-man's-land in the middle.
+
+- **Punch band: 80–110 characters** — peak engagement zone (per <100-char +17% engagement data). Use for T1, T3, T7.
+- **Earned-long band: 190–240 characters** — secondary peak for thoughtful adds. Use for T2, T4, T5, T6.
+- **Dead zone: 140–180 characters** — too long for the punch, too short for the earned-long. Drafter rewrites to either band.
+- **Hard floor: 80.** Hard ceiling: 240 (we leave headroom under X's 280 — long replies > 240 read as overcooked).
+
+## Goal routing
+
+Every draft must declare a **goal** that drives template choice:
+
+- `goal=op_reply` — make OP reply back (worth +75 in Phoenix ranker, biggest single multiplier). Favors T3, T1, T4.
+- `goal=quote_amplification` — generate quote-tweets / third-party shares for impression spike. Favors T2, T5.
+- `goal=positioning` — signal authority to lurkers (highest profile-click yield). Favors T5, T6.
+
+If no goal fits the post, **SKIP** rather than force a weak draft.
 
 ## Frame (mandatory)
 
 Every reply must do ONE of:
 1. **Value-add** with a specific number, observation, or counter-example you actually have
-2. **Thoughtful question** that invites OP to reply back (+75 algorithm weight, Jan 2026 Grok ranker)
+2. **Thoughtful question** that invites OP to reply back
 3. **Specific counter** that shifts the frame without being combative
 
 Replies that don't do one of these → SKIP.
@@ -28,34 +41,75 @@ The Jan 2026 Grok-based ranker actively **suppresses combative/snark replies reg
 
 Allowed: sharp disagreement that adds concrete information, respectful counter with reasoning, observation that reframes.
 
-## Opener rotation (≥5 templates, never repeat opener within 5 replies)
+## Reply structure templates (T1–T7, ranked by data-backed conversion)
 
-Use one of these opener shapes per reply, rotating across the day:
+Use one template per reply. State tracks the last 5 template IDs and rejects drafts that reuse within 5 — forces rotation.
 
-1. **Direct observation**: `The X framing is doing a lot of heavy lifting here.`
-2. **Builder-anchor reply**: `Same here, ~6 months in and…`
-3. **Conditional**: `Depends entirely on what stage you're at.`
-4. **Specific question**: `What was the baseline though.`
-5. **Number-led counter**: `~8 weekends in on a side project, the actual bottleneck was…`
-6. **"Borderline" soft accusation**: `The productivity-hack framing is borderline analysis paralysis.`
-7. **Three-beat closer leading the reply**: `Shipped it, broke it, redeployed. Different lesson than the post implies.`
+### T1. Specific-Number Counter-Anchor — HIGHEST (use ~25% of replies)
+- **Formula**: `[$ / % / time] + [the thing that mattered] — [the thing everyone assumes mattered].`
+- **Band**: 80–110
+- **Example**: `$80 and three weekends. The bottleneck was schema design, not the model choice.`
+- **Goal fit**: op_reply, positioning
+- **Use when**: OP makes a sweeping cost/time/effort claim.
 
-The skill tracks the last 5 opener shapes and rejects drafts that reuse.
+### T2. Contrarian Frame + Concrete Reason — HIGH (use ~15%)
+- **Formula**: `Actually the inverse — [specific mechanism in <12 words].`
+- **Band**: 80–110 OR 190–240
+- **Example**: `Inverse has been truer for us — the cheaper model wins when retrieval is doing the real work.`
+- **Goal fit**: quote_amplification
+- **Skip if**: OP is already contrarian (cancels).
+
+### T3. Forced-Defense Question — HIGH for op-reply (use ~20%)
+- **Formula**: `[Single short question targeting the unstated baseline/assumption].`
+- **Band**: 80–110 (keep punchy, <60 ideal)
+- **Example**: `What was the baseline you were measuring against?`
+- **Goal fit**: op_reply (strongest pull)
+- **Use when**: OP posted a benchmark/growth claim/"X is dead" take without showing work.
+
+### T4. Personal Anchor + Extrapolation — MEDIUM-HIGH (use ~15%)
+- **Formula**: `Same pattern here — [N units in], [specific observation that generalizes].`
+- **Band**: 190–240
+- **Example**: `Same here, ~6 months into agent infra: latency complaints disappear once you cache the planner, not the tool calls.`
+- **Goal fit**: positioning (highest profile-click yield for builder audiences)
+- **Use when**: OP shares a struggle or in-progress finding. Signals "operator, not pundit."
+
+### T5. Reframe-the-Metric — MEDIUM (use ~10%)
+- **Formula**: `[Metric OP cited] is the wrong number. Try [more useful metric] — [why in one clause].`
+- **Band**: 190–240
+- **Example**: `Followers is the wrong number for a tool account — activation-per-100-visitors is the one that actually moves revenue.`
+- **Goal fit**: quote_amplification, positioning
+- **Use when**: OP is measuring vanity. Doubles as positioning content.
+
+### T6. Counter-Example From Own Work — MEDIUM (use ~10%)
+- **Formula**: `Counter-data point: [specific situation], [specific outcome opposite to OP's claim].`
+- **Band**: 190–240
+- **Example**: `Counter-data point: ran the same eval on 3 internal doc corpora last week — Haiku beat Sonnet on two of them once we tightened the system prompt.`
+- **Goal fit**: positioning
+- **Skip on**: lifestyle/marketing threads (reads as one-upping).
+
+### T7. Three-Beat Closer — MEDIUM, voice multiplier (use ~5%)
+- **Formula**: `[Clause]. [Clause]. [Punchline clause].`
+- **Band**: 80–110
+- **Example**: `Model is fine. Prompt is fine. Your eval set is what's lying to you.`
+- **Use when**: You have a clean three-step diagnosis. Don't force it.
 
 ## Banned openers (auto-reject the draft)
 
-- `Great post`
-- `This!`
-- `This.`
-- `Couldn't agree more`
-- `100%`
-- `So true`
-- `Spot on`
-- `Love this`
-- `Facts`
+Mobile collapses replies after ~60-80 chars — first 3-5 words decide profile-click. These openers test as dead in 2025-2026 builder threads:
+
+- `Great post` / `Great point` / `Great question`
+- `This!` / `This.` / `This is`
+- `Couldn't agree more` / `100%` / `So true` / `Spot on` / `Love this` / `Facts`
+- `I think` / `IMO` / `In my opinion` / `Honestly`
+- `As someone who…`
+- `Just…` (e.g. "Just adding…")
+- `Great question, here's a thread:` (reads as LinkedIn import — lowest-converting opener in builder threads)
+- Any opener starting with `I` or `My` (collapses to self-promo signal in mobile preview)
 - Any emoji-led opener
 - Any hashtag-led opener
 - Any opener that exactly matches the OP's first 4 words
+
+**Validated openers (use these shapes):** dollar figure (`$80 and…`), number+unit (`3 weekends in…`), contrarian flag (`Inverse —`, `Counter-data point:`), noun-first observation (`Bottleneck was…`, `Latency disappears when…`), single sharp question (`What was the baseline…`).
 
 ## Links and hashtags
 
