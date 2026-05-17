@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.lib import config, log, state, voice, safety, notion_mirror
-from scripts.lib.fetch import fetch_candidates
+from scripts.lib.fetch import fetch_candidates, CookiesExpired
 
 
 def _author(item) -> str:
@@ -71,7 +71,14 @@ def cmd_fetch() -> int:
         return 0
 
     log.info("fetch_start", capacity=capacity)
-    candidates = fetch_candidates()
+    try:
+        candidates = fetch_candidates()
+    except CookiesExpired as e:
+        print(f"COOKIES_EXPIRED: {e}")
+        print("Fix: log out + back in on x.com, copy fresh auth_token + ct0 from")
+        print("DevTools (Application → Cookies → x.com) into .env, then delete")
+        print(f"{Path.home() / '.x-comment' / 'PAUSED'} to resume.")
+        return 2
     log.info("candidates_count", n=len(candidates))
 
     drafted = 0
@@ -298,14 +305,9 @@ def cmd_status() -> int:
 # --- setup ---
 
 def cmd_setup() -> int:
-    """Lightweight setup check: xAI API key, Notion creds, claude CLI, profile dir."""
+    """Lightweight setup check: bird auth, Notion creds, claude CLI, profile dir."""
+    from scripts.lib import bird_health
     ok = True
-    if config.env("AUTH_TOKEN") and config.env("CT0"):
-        print("[ok] X session cookies (AUTH_TOKEN + CT0) present")
-    else:
-        print("[fail] X session cookies missing. Grab auth_token + ct0 from x.com DevTools "
-              "(Application → Cookies → x.com) and add to .env as AUTH_TOKEN + CT0.")
-        ok = False
     # Verify Node is available for the vendored bird-search subprocess
     import shutil
     if shutil.which("node"):
@@ -313,6 +315,24 @@ def cmd_setup() -> int:
     else:
         print("[fail] node not found. Install Node.js 22+ (the bird-search reader runs on Node).")
         ok = False
+    # Cookies present?
+    if config.env("AUTH_TOKEN") and config.env("CT0"):
+        print("[ok] X session cookies (AUTH_TOKEN + CT0) present in .env")
+    else:
+        print("[fail] X session cookies missing. Grab auth_token + ct0 from x.com DevTools "
+              "(Application → Cookies → x.com) and add to .env as AUTH_TOKEN + CT0.")
+        ok = False
+    # Live auth check via bird
+    if shutil.which("node"):
+        health = bird_health.check_auth()
+        if health.authenticated:
+            print(f"[ok] bird authenticated via X (source: {health.source})")
+        else:
+            reason = health.error or "; ".join(health.warnings or []) or "unknown"
+            print(f"[fail] bird NOT authenticated: {reason}")
+            print("       Cookies may be expired. Log out + back in on x.com, re-grab "
+                  "auth_token + ct0, update .env.")
+            ok = False
     if config.env("NOTION_TOKEN") and config.env("NOTION_DB_ID"):
         print("[ok] Notion env vars present")
     else:

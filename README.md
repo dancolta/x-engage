@@ -260,6 +260,25 @@ Kill switches:
 - `~/.x-comment/PAUSED` file → halt on publish runs
 - Any safety signal (captcha, restriction language, suspended account) detected during `publish` → auto-write `PAUSED`, screenshot to `~/Downloads/x-incident-*.png`, exit code 2
 
+### Cookie expiry handling
+
+X session cookies (`AUTH_TOKEN` + `CT0`) expire periodically. The skill detects two failure modes:
+
+1. **Missing cookies** (`.env` empty / `AUTH_TOKEN=` blank): `fetch` and `setup` both halt with a clear message. `setup` shows `[fail] X session cookies missing`.
+2. **X explicitly rejects the session** (401/403 in bird's response): `fetch` writes `~/.x-comment/PAUSED` with recovery instructions and exits code 2.
+
+Recovery (whichever path triggered it):
+```
+1. Open x.com in Chrome → log out → log back in
+2. DevTools (Cmd+Opt+I) → Application → Cookies → x.com
+3. Copy `auth_token` and `ct0` values
+4. Replace AUTH_TOKEN= and CT0= lines in .env
+5. rm ~/.x-comment/PAUSED   (only if it exists)
+6. /x-comment setup   (verify "[ok] bird authenticated via X")
+```
+
+Note: bird gracefully falls back to guest tokens when cookies are technically present but invalid. Search still works (with lower rate limits), so silent expiry won't break the tool — it'll just lose any session-specific advantages.
+
 ## Anti-hallucination guarantees
 
 - The drafter prompt receives **only** the source post text + voice files. No web fetch, no external context. The drafter cannot invent stats, quotes, or handles because it has nothing to invent from.

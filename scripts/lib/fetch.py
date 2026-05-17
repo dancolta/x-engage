@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import claude_client, config, log, state
+from . import bird_health, claude_client, config, log, state
 from .vendor.l30d import (
     bird_x,
     dedupe as _dedupe,
@@ -168,8 +168,14 @@ def _bird_search_with_precise_time(query: str, from_date: str, to_date: str,
 
     Returns list of item dicts in the same shape as bird_x.parse_bird_response,
     but with `date` set to a full ISO timestamp.
+
+    Raises CookiesExpired if X rejects the session mid-fetch.
     """
     response = bird_x.search_x(query, from_date, to_date, depth=depth)
+    if bird_health.looks_like_auth_failure(response):
+        err = str(response.get("error") if isinstance(response, dict) else response)
+        bird_health.write_paused_for_cookies(f"bird search failed: {err}")
+        raise CookiesExpired(err)
     parsed = bird_x.parse_bird_response(response, query=query)
 
     # parse_bird_response strips id (uses "X1", "X2", ...) and `date` to YYYY-MM-DD.
@@ -217,12 +223,30 @@ def _age_minutes(published_at: str | None, now: datetime) -> float | None:
     return (now - pub).total_seconds() / 60.0
 
 
+class CookiesExpired(RuntimeError):
+    """Raised by fetch_candidates when bird auth fails. Surfaces a
+    machine-readable signal (`COOKIES_EXPIRED`) to the orchestrator so the
+    skill wrapper can show the recovery instructions.
+    """
+
+
 def fetch_candidates() -> list[SourceItem]:
-    """Return ranked, age-filtered X SourceItems ready for drafting."""
+    """Return ranked, age-filtered X SourceItems ready for drafting.
+
+    Raises CookiesExpired (subclass of RuntimeError) if bird auth fails. The
+    PAUSED flag is also written so subsequent runs short-circuit.
+    """
     if not (config.env("AUTH_TOKEN") and config.env("CT0")):
-        log.error("missing bird auth cookies",
+        log.error("missing_cookies",
                   hint="copy auth_token + ct0 from x.com DevTools cookies into .env")
         return []
+
+    # Preflight: validate cookies before spending time / API calls
+    health = bird_health.check_auth()
+    if not health.authenticated:
+        reason = health.error or "; ".join(health.warnings or []) or "unknown auth failure"
+        bird_health.write_paused_for_cookies(reason)
+        raise CookiesExpired(reason)
 
     settings = config.settings()
     cooldown_hours = config.safe_int(

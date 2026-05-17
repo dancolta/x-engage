@@ -62,12 +62,22 @@ Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, or publish
 - `publish`: published / failed / deferred counts. Surface any safety signals
 - `status`: phase, today's count vs cap, paused state, queue counts
 
-## Critical: account safety signals
+## Critical: safety + auth signals
 
-If output contains `ACCOUNT_PAUSED`, `RESTRICTION`, `CAPTCHA`, `LOGIN_REQUIRED`, or exit code 2:
+If output contains `ACCOUNT_PAUSED`, `RESTRICTION`, `CAPTCHA`, `LOGIN_REQUIRED`, or exit code 2 (from publish):
 - DO NOT retry. Halt.
 - Tell the user: "X account safety check failed. Open the screenshot at `~/Downloads/x-incident-*.png`. After confirming the account is healthy, delete `~/.x-comment/PAUSED` to resume."
 - Do not run any further X-touching commands until the user explicitly resumes.
+
+If output contains `COOKIES_EXPIRED` (from fetch, exit code 2):
+- DO NOT retry. Halt.
+- Tell the user: "Your X session cookies expired. To fix:
+  1. Open x.com in Chrome, log out, log back in.
+  2. DevTools (Cmd+Opt+I) → Application → Cookies → https://x.com
+  3. Copy `auth_token` and `ct0` values into `.env` (replace old `AUTH_TOKEN=` and `CT0=` lines).
+  4. Delete `~/.x-comment/PAUSED` to resume.
+  Then run `/x-comment setup` to verify, and re-run fetch."
+- Do not run any further X-touching commands until the user has updated cookies and removed the PAUSED file.
 
 ## Unknown args
 
