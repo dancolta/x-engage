@@ -169,9 +169,24 @@ def _bird_search_with_precise_time(query: str, from_date: str, to_date: str,
     Returns list of item dicts in the same shape as bird_x.parse_bird_response,
     but with `date` set to a full ISO timestamp.
 
-    Raises CookiesExpired if X rejects the session mid-fetch.
+    Raises CookiesExpired if X rejects the session mid-fetch. Transient rate
+    limits (HTTP 429) trigger a single back-off + retry; the second 429 returns
+    an empty result list so the caller moves on to the next subquery rather
+    than pausing the system.
     """
-    response = bird_x.search_x(query, from_date, to_date, depth=depth)
+    import time as _time
+
+    def _search_once() -> Any:
+        return bird_x.search_x(query, from_date, to_date, depth=depth)
+
+    response = _search_once()
+    if bird_health.looks_like_rate_limit(response):
+        log.warn("bird_rate_limited", query=query[:60], action="backoff 45s + retry once")
+        _time.sleep(45)
+        response = _search_once()
+        if bird_health.looks_like_rate_limit(response):
+            log.warn("bird_rate_limited_persist", query=query[:60], action="skip subquery, do NOT pause")
+            return []
     if bird_health.looks_like_auth_failure(response):
         err = str(response.get("error") if isinstance(response, dict) else response)
         bird_health.write_paused_for_cookies(f"bird search failed: {err}")

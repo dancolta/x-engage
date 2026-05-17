@@ -49,6 +49,18 @@ _AUTH_FAIL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# X rate-limit signals — transient, NOT an auth problem. Cookies are fine;
+# we just hit the per-window quota. Caller should back off, not pause.
+_RATE_LIMIT_RE = re.compile(
+    r"\b("
+    r"429|"
+    r"rate\s*limit(?:ed|\s+exceeded)?|"
+    r"too\s+many\s+requests|"
+    r"quota\s+exceeded"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class AuthStatus:
@@ -138,7 +150,16 @@ def check_auth(timeout: int = 18) -> AuthStatus:
                 source=str(presence.get("source") or ""),
                 error=f"X rejected the session: {err}",
             )
-        # Non-auth error (5xx, network) — surface but don't lock the user out
+        # Rate limit on the probe = cookies are valid, X is just throttling.
+        # Don't lock the user out; let the caller decide whether to back off.
+        if _RATE_LIMIT_RE.search(err):
+            return AuthStatus(
+                authenticated=True,
+                source=str(presence.get("source") or ""),
+                warnings=[f"rate-limited on auth probe (not an auth failure): {err}"],
+            )
+        # Non-auth, non-rate-limit error (5xx, network) — surface but don't
+        # lock the user out
         return AuthStatus(
             authenticated=False,
             source=str(presence.get("source") or ""),
@@ -160,6 +181,11 @@ def looks_like_auth_failure(response: Any) -> bool:
     Returns True only when the response contains an explicit auth-related
     error string (matched via _AUTH_FAIL_RE). Empty results = False (could be
     a legitimate "no recent posts" outcome we shouldn't pause on).
+
+    Rate-limit errors (429) are NOT auth failures — they're transient and
+    callers should back off, not pause. Use `looks_like_rate_limit` for that
+    case (the two checks are mutually exclusive: a 429 returns True from
+    looks_like_rate_limit and False from looks_like_auth_failure).
     """
     if not isinstance(response, dict):
         return False
@@ -168,7 +194,24 @@ def looks_like_auth_failure(response: Any) -> bool:
         return False
     if isinstance(err, dict):
         err = err.get("message") or str(err)
-    return bool(_AUTH_FAIL_RE.search(str(err)))
+    err_s = str(err)
+    if _RATE_LIMIT_RE.search(err_s):
+        return False
+    return bool(_AUTH_FAIL_RE.search(err_s))
+
+
+def looks_like_rate_limit(response: Any) -> bool:
+    """Inspect a bird search response for transient rate-limit signals (HTTP 429,
+    quota exceeded, etc.). Callers should back off and retry, NOT pause.
+    """
+    if not isinstance(response, dict):
+        return False
+    err = response.get("error")
+    if not err:
+        return False
+    if isinstance(err, dict):
+        err = err.get("message") or str(err)
+    return bool(_RATE_LIMIT_RE.search(str(err)))
 
 
 def write_paused_for_cookies(reason: str) -> Path:
