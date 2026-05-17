@@ -1,0 +1,147 @@
+"""Draft generation via the Claude CLI. Voice = voice-profile.md + x-overlay.md.
+
+Scoring is a lightweight heuristic; the LLM does the heavy lifting on tone.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+from pathlib import Path
+
+from . import config, log
+
+ROOT = Path(__file__).resolve().parents[2]
+VOICE_PROFILE = ROOT / "voice-profile.md"
+VOICE_PROFILE_PERSONAL = ROOT / "voice-profile.personal.md"
+X_OVERLAY = ROOT / "x-overlay.md"
+
+
+def _load_prompt_assets() -> tuple[str, str]:
+    # Prefer a local-only personal override if present (gitignored)
+    voice_path = VOICE_PROFILE_PERSONAL if VOICE_PROFILE_PERSONAL.exists() else VOICE_PROFILE
+    return voice_path.read_text(), X_OVERLAY.read_text()
+
+
+PROMPT_TEMPLATE = """{voice_profile}
+
+---
+
+{x_overlay}
+
+---
+
+# Source post you are replying to
+
+Author: @{author} ({followers} followers)
+Posted: {age_min} minutes ago
+Text:
+\"\"\"
+{source_text}
+\"\"\"
+
+{feedback_block}
+
+# Your task
+
+Write ONE X reply in Dan's voice that follows every rule above. Output ONLY the reply text on a single line. No quotes, no preamble, no markdown. If no valid reply is possible, output the literal word SKIP.
+"""
+
+
+def draft_reply(*, source_text: str, author: str, followers: int, age_min: int,
+                feedback: str | None = None) -> str:
+    """Call the Claude CLI with voice + overlay + source post. Returns raw output."""
+    voice, overlay = _load_prompt_assets()
+    feedback_block = ""
+    if feedback:
+        feedback_block = (
+            f"# Steer (Dan's feedback on the previous draft — apply this)\n"
+            f"\"\"\"\n{feedback}\n\"\"\"\n"
+        )
+    prompt = PROMPT_TEMPLATE.format(
+        voice_profile=voice,
+        x_overlay=overlay,
+        author=author,
+        followers=followers,
+        age_min=age_min,
+        source_text=source_text,
+        feedback_block=feedback_block,
+    )
+
+    cli = config.env("CLAUDE_CLI", "claude")
+    settings = config.settings().get("drafter") or {}
+    model = settings.get("model", "claude-sonnet-4-6")
+    cmd = [cli, "--print", "--model", model]
+    try:
+        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=90)
+        if r.returncode != 0:
+            log.warn("claude_cli_failed", stderr=r.stderr[:300])
+            return "SKIP"
+        return r.stdout.strip().splitlines()[0].strip() if r.stdout.strip() else "SKIP"
+    except subprocess.TimeoutExpired:
+        log.warn("claude_cli_timeout")
+        return "SKIP"
+    except FileNotFoundError:
+        log.error("claude_cli_not_found", cli=cli)
+        return "SKIP"
+
+
+# --- Scoring ---
+
+OPENER_ANCHORS = (
+    "the ", "same here", "depends entirely", "what was", "borderline",
+    "shipped", "broke", "been ", "sitting on", "asking for myself",
+)
+
+
+def score_draft(draft: str) -> float:
+    """Heuristic voice-match score in [0,1].
+
+    Components:
+      - structural fitness (length, sentence count, opener type): up to 0.5
+      - idiolect signals (tilde, off-round numbers, 'that's it' / 'asking for myself'): up to 0.3
+      - cleanness (no banned shapes already caught by safety; bonus for clean): up to 0.2
+    """
+    text = draft.strip()
+    if not text or text.upper() == "SKIP":
+        return 0.0
+
+    score = 0.0
+
+    # Length sweet spot 120–200 = full points, edges get less
+    L = len(text)
+    if 120 <= L <= 200:
+        score += 0.25
+    elif 80 <= L < 120 or 200 < L <= 240:
+        score += 0.18
+    elif 240 < L <= 280:
+        score += 0.10
+
+    # Sentence count: 2–3 sentences is the target
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    if 2 <= len(sentences) <= 3:
+        score += 0.15
+    elif len(sentences) == 1 or len(sentences) == 4:
+        score += 0.08
+
+    # Opener feels like Dan
+    low = text.lower()
+    if any(low.startswith(a) for a in OPENER_ANCHORS):
+        score += 0.10
+
+    # Idiolect signals
+    if "~" in text and re.search(r"~\d", text):
+        score += 0.10  # off-round time/count signal
+    if re.search(r"\b\d{2,}\b", text) and not re.search(r"\b\d+0+\b", text):
+        score += 0.08  # number that doesn't end in zero
+    if "borderline" in low:
+        score += 0.05
+    if "that's it" in low or "asking for myself" in low:
+        score += 0.05
+    if re.search(r"\([^)]{3,60}\)", text):
+        score += 0.05  # parenthetical aside
+
+    # Cleanness bonus (already passed safety lint by the time we score)
+    score += 0.20
+
+    return round(min(score, 1.0), 3)

@@ -1,0 +1,48 @@
+# Topic / keyword search — Filter 2 (X API search after tracked accounts are processed)
+#
+# Copy this file to topics.yml. Each topic produces its own search query.
+# Use specific phrases that signal posts you can credibly reply to.
+# Avoid: overly broad terms (will pull spam), brand names you don't engage with.
+
+topics:
+  - name: building_in_public
+    queries:
+      - "building in public"
+      - "shipped my first"
+      - "weekend project"
+    min_followers: 5000        # skip authors below this size (per x-overlay.md sweet spot)
+    max_followers: 250000      # skip whales unless explicitly listed in accounts.yml
+    min_engagement_rate: 0.01  # skip dead-engagement accounts
+    max_results_per_query: 20  # candidates pulled per query per run
+
+  - name: ai_for_ops
+    queries:
+      - "AI replacing SaaS"
+      - "automated my workflow"
+      - "claude code"
+    min_followers: 5000
+    max_followers: 250000
+    min_engagement_rate: 0.01
+    max_results_per_query: 20
+
+  - name: solo_founder_growth
+    queries:
+      - "solo founder"
+      - "indie hacker"
+      - "bootstrapped"
+    min_followers: 5000
+    max_followers: 100000
+    min_engagement_rate: 0.015
+    max_results_per_query: 15
+
+# Global rules applied to all topic searches:
+rules:
+  language: en                 # English only (matches voice-profile.md)
+  max_age_minutes: 60
+  min_age_minutes: 5
+  skip_replies: true
+  skip_retweets: true
+  skip_quote_tweets: false
+  exclude_handles:             # never reply to these even if a query matches
+    - elonmusk                 # whale, low conversion
+    - sama                     # whale

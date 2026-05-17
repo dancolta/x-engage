@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Drafting job. Fires several times across the posting windows defined in
+  config/settings.yml. NEVER auto-publishes — it only fills the draft queue.
+  Approval happens in chat via `/x-comment review` + `approve`.
+
+  Setup:
+    1. Replace YOUR_USERNAME and YOUR_PATH_TO_X_COMMENT placeholders below
+       with your real values.
+    2. cp assets/com.example.xcomment.fetch.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.example.xcomment.fetch.plist
+
+  Adjust ProgramArguments / paths to your Python venv if not using system Python.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.xcomment.fetch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>cd "YOUR_PATH_TO_X_COMMENT" && python3 -m scripts.x_comment fetch</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>YOUR_PATH_TO_X_COMMENT</string>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- Tue–Thu morning window -->
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+        <!-- Tue–Thu afternoon window -->
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>15</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>15</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>15</integer><key>Minute</key><integer>15</integer></dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>YOUR_PATH_TO_X_COMMENT/logs/launchd-fetch.log</string>
+    <key>StandardErrorPath</key>
+    <string>YOUR_PATH_TO_X_COMMENT/logs/launchd-fetch.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

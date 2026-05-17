@@ -1,0 +1,42 @@
+.env
+.env.local
+state/
+logs/
+*.sqlite
+*.sqlite-journal
+*.db
+config/accounts.yml
+config/topics.yml
+config/settings.yml
+chrome-profile/
+
+# Personal voice file (gitignored override; preferred by voice.py if present)
+voice-profile.personal.md
+
+# Local-only planning / notes (not for the public repo)
+PLAN.md
+PLAN.local.md
+NOTES.md
+TODO.local.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.pytest_cache/
+.coverage
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

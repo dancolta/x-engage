@@ -1,0 +1,52 @@
+# Global settings — copy to settings.yml and tune.
+# Code-level panic ceilings in guardrails.md override anything here.
+
+# Daily volume
+daily_cap: 10                  # replies/day (research-backed default)
+                               # Code rejects values > 25 (panic ceiling)
+
+# Pacing
+min_gap_between_publishes_sec: 90   # intra-batch min gap (code minimum: 30)
+jitter_window_minutes: [20, 80]     # random delay between posting windows
+
+# Posting windows (target audience TZ — see tz below)
+# Default: Tue–Thu 8-11am + 3pm (research-backed peaks)
+posting_windows:
+  - days: [tue, wed, thu]
+    start: "08:00"
+    end: "11:00"
+  - days: [tue, wed, thu]
+    start: "15:00"
+    end: "16:00"
+
+# Timezone (target audience, not your local TZ unless they match)
+tz: UTC                        # adjust to your audience's main TZ (e.g. America/New_York, Europe/London)
+
+# Quality threshold (drafts below this get auto-rejected, not shown in review)
+voice_match_threshold: 0.65    # 0.0–1.0
+
+# Drafter model
+drafter:
+  cli: claude                  # claude CLI binary
+  model: claude-sonnet-4-6     # use sonnet for drafts (faster, cheaper than opus)
+  max_redraft_attempts: 2      # per-draft redraft attempts before SKIP
+
+# Custom banlist — terms that auto-reject any draft containing them.
+# Put competitor names, ex-employer names, taboo topics, etc.
+# Case-insensitive substring match.
+banned_terms: []
+  # - acme corp
+  # - old_employer_name
+
+# Notion mirror
+notion:
+  mirror_enabled: true         # set false to skip Notion writes (SQLite still works)
+  status_field: Status         # column name in your Notion DB
+
+# Logging
+log_level: INFO                # DEBUG | INFO | WARN | ERROR
+log_dir: ./logs
+
+# Safety
+require_explicit_approval: true   # publish.py refuses to ship anything not chat-approved
+                                  # ALWAYS keep this true. Code refuses to flip it via config.

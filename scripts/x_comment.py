@@ -1,0 +1,330 @@
+"""x-comment CLI orchestrator. Subcommands: fetch | review | approve | redraft | kill | publish | status | setup.
+
+All subcommands print structured one-line summaries the skill wrapper (SKILL.md)
+will surface to Dan in chat. Exit code 2 = account safety signal — caller must HALT.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Make `from scripts.lib...` work when invoked as `python -m scripts.x_comment`
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib import config, log, state, voice, safety, notion_mirror
+from scripts.lib.fetch import fetch_candidates
+
+
+# --- Helpers ---
+
+def _check_halted() -> None:
+    if config.is_halted():
+        print("HALTED: kill switch engaged (X_COMMENT_HALT=1 or ~/.x-comment/PAUSED)")
+        sys.exit(2)
+
+
+def _settings_or_panic() -> dict:
+    s = config.settings()
+    s["daily_cap"] = config.safe_int(s.get("daily_cap", 10), 10, 1, config.PANIC["daily_cap_max"])
+    s["min_gap_between_publishes_sec"] = config.safe_int(
+        s.get("min_gap_between_publishes_sec", 90), 90,
+        lower=config.PANIC["min_gap_sec_floor"], upper=3600,
+    )
+    s["voice_match_threshold"] = float(s.get("voice_match_threshold", 0.65))
+    s["handle_cooldown_hours"] = config.safe_int(
+        s.get("handle_cooldown_hours", 24), 24,
+        lower=config.PANIC["handle_cooldown_hours_floor"], upper=168,
+    )
+    return s
+
+
+# --- fetch ---
+
+def cmd_fetch() -> int:
+    _check_halted()
+    settings = _settings_or_panic()
+    threshold = settings["voice_match_threshold"]
+
+    counts = state.queue_counts()
+    pending = counts.get("pending", 0)
+    daily_cap = settings["daily_cap"]
+    published_today = state.count_published_today()
+    capacity = daily_cap - published_today - pending
+    if capacity <= 0:
+        print(f"fetch: daily capacity full (cap={daily_cap}, published_today={published_today}, pending={pending}). Skipping.")
+        return 0
+
+    log.info("fetch_start", capacity=capacity)
+    candidates = fetch_candidates()
+    log.info("candidates_count", n=len(candidates))
+
+    drafted = 0
+    skipped = 0
+    rejected = 0
+    recent_openers = state.recent_openers(limit=5)
+
+    for tweet in candidates:
+        if drafted >= capacity:
+            break
+        state.mark_seen(tweet.id)
+        if state.lifetime_replies_to(tweet.author_handle, within_days=30) >= 4:
+            skipped += 1
+            continue
+
+        draft = voice.draft_reply(
+            source_text=tweet.text,
+            author=tweet.author_handle,
+            followers=tweet.author_followers,
+            age_min=int(tweet.age_minutes),
+        )
+        if draft.strip().upper() == "SKIP" or not draft.strip():
+            skipped += 1
+            continue
+
+        passes, reason = safety.lint_draft(
+            draft, source_author=tweet.author_handle, recent_openers=recent_openers,
+        )
+        if not passes:
+            log.info("draft_rejected", reason=reason, tweet_id=tweet.id)
+            rejected += 1
+            continue
+
+        score = voice.score_draft(draft)
+        if score < threshold:
+            log.info("draft_below_threshold", score=score, threshold=threshold)
+            rejected += 1
+            continue
+
+        draft_id = state.insert_draft(
+            source_id=tweet.id,
+            source_url=tweet.url,
+            source_author=tweet.author_handle,
+            source_text=tweet.text,
+            source_followers=tweet.author_followers,
+            source_age_min=int(tweet.age_minutes),
+            draft=draft,
+            score=score,
+        )
+        # Mirror to Notion (log only, never approval)
+        page_id = notion_mirror.push_draft(state.get_draft(draft_id) or {})
+        if page_id:
+            state.set_draft_status(draft_id, "pending", notion_page_id=page_id)
+        state.record_opener(safety.extract_opener(draft))
+        recent_openers = state.recent_openers(limit=5)
+        drafted += 1
+
+    print(f"fetch: drafted={drafted}, skipped={skipped}, rejected={rejected}, candidates={len(candidates)}")
+    db_id = config.env("NOTION_DB_ID")
+    if db_id:
+        print(f"Notion DB: https://www.notion.so/{db_id.replace('-', '')} (log only — approve in chat)")
+    return 0
+
+
+# --- review ---
+
+def cmd_review() -> int:
+    pending = state.list_drafts(status="pending")
+    if not pending:
+        print("review: no pending drafts. Run /x-comment fetch first.")
+        return 0
+    print(f"review: {len(pending)} pending draft(s)\n")
+    for i, row in enumerate(pending, start=1):
+        src = (row["source_text"] or "").strip().replace("\n", " ")[:140]
+        print(f"#{row['id']}  @{row['source_author']} ({row['source_followers']:,} followers) "
+              f"· {row['source_age_min']}min ago · score {row['score']:.2f}")
+        print(f"  Source: \"{src}\"")
+        print(f"  Draft:  \"{row['draft']}\"\n")
+    print("Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, or publish")
+    return 0
+
+
+# --- approve ---
+
+def cmd_approve(args: list[str]) -> int:
+    if not args:
+        print("approve: pass ids (e.g. `approve 1a2b 3c4d`) or `approve all`")
+        return 1
+    if args == ["all"]:
+        targets = [r["id"] for r in state.list_drafts(status="pending")]
+    else:
+        raw = " ".join(args).replace(",", " ").split()
+        targets = [t.strip("#") for t in raw if t.strip("#")]
+    if not targets:
+        print("approve: nothing to approve")
+        return 0
+    n = 0
+    for tid in targets:
+        if state.set_draft_status(tid, "approved", approved_at=state.now()):
+            row = state.get_draft(tid)
+            if row and row.get("notion_page_id"):
+                notion_mirror.update_status(row["notion_page_id"], "approved")
+            n += 1
+    print(f"approve: marked {n} draft(s) approved. Run `/x-comment publish` to ship.")
+    return 0
+
+
+# --- redraft ---
+
+def cmd_redraft(args: list[str]) -> int:
+    if len(args) < 2:
+        print('redraft: usage `/x-comment redraft <id> "<feedback>"`')
+        return 1
+    tid = args[0].strip("#")
+    feedback = " ".join(args[1:])
+    row = state.get_draft(tid)
+    if not row:
+        print(f"redraft: no draft with id {tid}")
+        return 1
+    settings = _settings_or_panic()
+    max_retry = int((settings.get("drafter") or {}).get("max_redraft_attempts", 2))
+    if row["redraft_count"] >= max_retry:
+        print(f"redraft: #{tid} hit max redraft attempts ({max_retry})")
+        return 1
+
+    new_draft = voice.draft_reply(
+        source_text=row["source_text"],
+        author=row["source_author"],
+        followers=row["source_followers"],
+        age_min=row["source_age_min"],
+        feedback=feedback,
+    )
+    recent_openers = state.recent_openers(limit=5)
+    passes, reason = safety.lint_draft(
+        new_draft, source_author=row["source_author"], recent_openers=recent_openers,
+    )
+    if not passes:
+        print(f"redraft: rejected ({reason}). Try different feedback or `kill {tid}`.")
+        return 1
+    score = voice.score_draft(new_draft)
+    state.set_draft_status(
+        tid, "pending",
+        draft=new_draft, score=score,
+        feedback=feedback, redraft_count=row["redraft_count"] + 1,
+    )
+    print(f"redraft #{tid}: score {score:.2f}")
+    print(f'  Draft: "{new_draft}"')
+    return 0
+
+
+# --- kill ---
+
+def cmd_kill(args: list[str]) -> int:
+    if not args:
+        print("kill: pass an id")
+        return 1
+    tid = args[0].strip("#")
+    ok = state.set_draft_status(tid, "rejected")
+    if ok:
+        row = state.get_draft(tid)
+        if row and row.get("notion_page_id"):
+            notion_mirror.update_status(row["notion_page_id"], "rejected", reason="killed in chat")
+        print(f"kill: rejected #{tid}")
+    else:
+        print(f"kill: no draft with id {tid}")
+    return 0 if ok else 1
+
+
+# --- publish ---
+
+def cmd_publish() -> int:
+    _check_halted()
+    settings = _settings_or_panic()
+    approved = state.list_approved_for_publish()
+    if not approved:
+        print("publish: nothing approved. Use `/x-comment review` then `approve <ids|all>`.")
+        return 0
+
+    cap_remaining = settings["daily_cap"] - state.count_published_today()
+    if cap_remaining <= 0:
+        print(f"publish: daily cap hit ({settings['daily_cap']}). Try again tomorrow.")
+        return 0
+
+    # Refuse to publish if `require_explicit_approval` is somehow false (defense in depth)
+    if not settings.get("require_explicit_approval", True):
+        print("publish: REFUSING — require_explicit_approval must be true. Edit config/settings.yml.")
+        return 2
+
+    # Lazy import: keep Playwright optional for environments without it
+    try:
+        from scripts.lib.publisher import publish_batch
+    except ImportError as e:
+        print(f"publish: Playwright not available — install with `pip install playwright && playwright install chromium`. ({e})")
+        return 1
+
+    to_publish = approved[:cap_remaining]
+    deferred = len(approved) - len(to_publish)
+    result = publish_batch(to_publish, settings)
+    print(f"publish: published={result['published']}, failed={result['failed']}, deferred={deferred}")
+    if result.get("safety_signal"):
+        print(f"ACCOUNT_PAUSED: {result['safety_signal']}")
+        return 2
+    return 0
+
+
+# --- status ---
+
+def cmd_status() -> int:
+    settings = _settings_or_panic()
+    counts = state.queue_counts()
+    published_today = state.count_published_today()
+    paused = (Path.home() / ".x-comment" / "PAUSED").exists()
+    halt = config.env("X_COMMENT_HALT", "0") == "1"
+    print(f"status: published_today={published_today}/{settings['daily_cap']}, "
+          f"queue={counts}, paused={paused}, halt_env={halt}")
+    return 0
+
+
+# --- setup ---
+
+def cmd_setup() -> int:
+    """Lightweight setup check: xurl auth, Notion creds, claude CLI, profile dir."""
+    from scripts.lib import x_api
+    ok = True
+    if x_api.is_available():
+        print("[ok] xurl authenticated")
+    else:
+        print("[fail] xurl not installed or not authenticated. Install from https://github.com/xdevplatform/xurl/releases, then `xurl auth apps add <name> --client-id ... --client-secret ...` and `xurl auth oauth2`.")
+        ok = False
+    if config.env("NOTION_TOKEN") and config.env("NOTION_DB_ID"):
+        print("[ok] Notion env vars present")
+    else:
+        print("[fail] NOTION_TOKEN and NOTION_DB_ID required in .env")
+        ok = False
+    import shutil
+    if shutil.which(config.env("CLAUDE_CLI", "claude")):
+        print("[ok] claude CLI on PATH")
+    else:
+        print("[fail] claude CLI not found. Set CLAUDE_CLI in .env or install Claude Code.")
+        ok = False
+    profile_dir = config.env("X_PROFILE_DIR", "~/.x-comment/chrome-profile")
+    print(f"[info] Playwright profile dir: {profile_dir} (you'll log into X here once)")
+    return 0 if ok else 1
+
+
+# --- Main ---
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args:
+        return cmd_fetch()
+    cmd, rest = args[0], args[1:]
+    table = {
+        "fetch": lambda: cmd_fetch(),
+        "review": lambda: cmd_review(),
+        "approve": lambda: cmd_approve(rest),
+        "redraft": lambda: cmd_redraft(rest),
+        "kill": lambda: cmd_kill(rest),
+        "publish": lambda: cmd_publish(),
+        "status": lambda: cmd_status(),
+        "setup": lambda: cmd_setup(),
+    }
+    if cmd not in table:
+        print(f"Unknown command: {cmd}")
+        print("Usage: x_comment [fetch|review|approve|redraft|kill|publish|status|setup]")
+        return 1
+    return table[cmd]()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

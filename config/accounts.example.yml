@@ -1,0 +1,36 @@
+# Tracked accounts — Filter 1 (always check these for new posts before keyword search)
+#
+# Copy this file to accounts.yml and fill with handles you actually want to engage with.
+# Tips:
+#   - 5k–250k follower range converts best (per research)
+#   - Match your niche; replies to off-topic whales rarely convert
+#   - 15–30 handles is a sustainable list to monitor; more = thinner coverage per run
+#   - Higher priority = checked first when daily cap is tight
+
+accounts:
+  - handle: example_builder_1
+    priority: high
+    notes: "Builds in public, ICP overlap"
+
+  - handle: example_founder_2
+    priority: high
+    notes: "B2B SaaS, mid-tier audience"
+
+  - handle: example_dev_3
+    priority: medium
+    notes: "Engineering takes, occasional viral threads"
+
+  - handle: example_creator_4
+    priority: medium
+
+  - handle: example_operator_5
+    priority: low
+    notes: "Wide audience, lower conversion expected"
+
+# Global rules applied to all tracked accounts:
+rules:
+  max_age_minutes: 60          # ignore posts older than this (default from x-overlay.md)
+  min_age_minutes: 5           # ignore posts younger than this (avoid mid-edit posts)
+  skip_replies: true           # ignore tracked-account posts that are themselves replies
+  skip_retweets: true
+  skip_quote_tweets: false     # quote tweets can be good reply targets
