@@ -26,7 +26,7 @@ Every `publish` run loads `x.com/home` first and scans for restriction language 
 - Skip source post if: < 50 chars, ad, poll, > 60 min old, already-replied author (24h), self-authored, NSFW flag, political-trigger flag, grief/crisis sentiment
 - Reject draft if: contains banned opener (`x-overlay.md` list), > 280 chars, < 80 chars, has emoji / `:)` / hashtag / `!`, contains URL, mentions any handle other than OP
 - Reject draft if: opener first 4 words match any of last 5 published openers
-- Reject draft if: negation-reframe scan hits (see `voice-profile.md`)
+- Reject draft if: negation-reframe scan hits (see `voice-profile.personal.md`)
 - Reject draft if: any term from `banned_terms` in `config/settings.yml` appears in the draft
 - Reject draft if: voice-match score < `voice_match_threshold`
 

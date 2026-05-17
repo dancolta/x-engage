@@ -1,6 +1,6 @@
-# X-specific overlay — applied on top of voice-profile.md
+# X-specific overlay — applied on top of voice-profile.personal.md
 
-This file holds X-platform constraints derived from May 2026 research (Grok ranker behavior, opener spam-heuristics, reply-length impact data). Edit this file to tune X-specific behavior. Edit `voice-profile.md` (or `voice-profile.personal.md`) to tune voice. Keep them separate so you can tune one without breaking the other.
+This file holds X-platform constraints derived from May 2026 research (Grok ranker behavior, opener spam-heuristics, reply-length impact data). Edit this file to tune X-specific behavior. Edit `voice-profile.personal.md` to tune voice. Keep them separate so you can tune one without breaking the other.
 
 ## Length — two-band model (data-backed, May 2026)
 

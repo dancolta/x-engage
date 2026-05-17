@@ -1,4 +1,4 @@
-"""Per-draft safety filters. Enforces voice-profile.md, x-overlay.md, guardrails.md rules
+"""Per-draft safety filters. Enforces voice-profile.personal.md, x-overlay.md, guardrails.md rules
 deterministically without LLM judgment so they're auditable.
 
 User-specific banned terms (employer names, ex-clients, taboo topics, etc.) live in

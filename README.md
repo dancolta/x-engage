@@ -45,7 +45,7 @@ Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
        Age window (5–60 min) + cooldown + seen-posts + follower bounds
                        │
                        ▼
-       voice-profile.md + x-overlay.md + Claude CLI → draft reply
+       voice-profile.personal.md + x-overlay.md + Claude CLI → draft reply
                        │
                        ▼
        safety lint + voice score
@@ -62,7 +62,7 @@ Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
 
 The discovery pipeline (`bird_x → normalize → signals → dedupe → snippet`) is vendored verbatim from the [`last30days`](https://github.com/YOUR-USER/last30days) skill into `scripts/lib/vendor/l30d/`, so candidate quality and ranking match what `/last30days` produces for X. Bird uses your browser session cookies (`AUTH_TOKEN` + `CT0` from `.env`) and runs as a Node subprocess — same auth model as your Playwright posting setup, zero API cost.
 
-The reply-drafting voice is defined in `voice-profile.md` (or a local `voice-profile.personal.md` override). `x-overlay.md` layers X-specific constraints on top — character minimums, opener rotation, banned spam triggers, constructive-tone requirement (the Jan 2026 Grok ranker actively suppresses combative replies regardless of engagement).
+The reply-drafting voice is defined in `voice-profile.personal.md` (gitignored — copy `voice-profile.example.md` to it and edit). `x-overlay.md` layers X-specific constraints on top — character minimums, opener rotation, banned spam triggers, constructive-tone requirement (the Jan 2026 Grok ranker actively suppresses combative replies regardless of engagement).
 
 ## Quick start
 
@@ -106,7 +106,7 @@ Edit each file:
 - **`config/accounts.yml`** — handles you reply to often (5k–250k followers convert best per research)
 - **`config/topics.yml`** — keyword searches mapped to topic buckets
 - **`config/settings.yml`** — daily cap, timezone, posting windows, voice-match threshold
-- **`voice-profile.md`** — your underlying voice (template ships generic; replace with your tone). Alternatively create `voice-profile.personal.md` (gitignored) and the skill prefers it.
+- **`voice-profile.personal.md`** — your underlying voice. **Required, gitignored.** Copy `voice-profile.example.md` to `voice-profile.personal.md` and edit. The skill only ever reads `voice-profile.personal.md` — the example file is a starter template, never loaded (no token waste, no leaked voice signals to/from the public repo).
 - **`x-overlay.md`** — X-specific constraints (length floor, opener rotation, banned patterns)
 
 ### 4. Notion database (optional)
@@ -235,11 +235,11 @@ The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the hi
 | `require_explicit_approval` | `true` | Code refuses to flip this false |
 | `banned_terms` | `[]` | Terms that auto-reject any draft containing them (your custom blocklist — competitor names, ex-employer names, etc.) |
 
-### `voice-profile.md` and `x-overlay.md`
+### `voice-profile.personal.md` and `x-overlay.md`
 
 Two files by design:
 
-- **`voice-profile.md`** — *who you are*. Underlying voice DNA. Edit to make replies sound like you. (Or drop a `voice-profile.personal.md` next to it — it's gitignored and the skill prefers it.)
+- **`voice-profile.personal.md`** — *who you are*. Underlying voice DNA. Required, gitignored. Copy from `voice-profile.example.md` and edit. The skill only reads this file (never the example) so a fork's published voice signals don't pollute your drafter prompt or waste tokens.
 - **`x-overlay.md`** — *platform constraints*. Length floor, opener rotation, banned shapes derived from May 2026 X research. Edit when X behavior changes; don't touch your voice file.
 
 This split lets you tune voice without breaking guardrails, and guardrails without breaking voice.
@@ -330,8 +330,8 @@ scripts/
 config/
 ├── *.example.yml           # tracked exemplars
 └── *.yml                   # gitignored, your real config
-voice-profile.md            # generic template (or your edits)
-voice-profile.personal.md   # gitignored override, preferred if present
+voice-profile.example.md    # generic template (tracked, never loaded)
+voice-profile.personal.md   # gitignored — REQUIRED, the only voice file the skill reads
 x-overlay.md                # X-platform constraints
 guardrails.md               # hard caps + kill switches
 SKILL.md                    # Claude Code skill manifest

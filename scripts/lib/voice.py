@@ -1,4 +1,4 @@
-"""Draft generation via the Claude CLI. Voice = voice-profile.md + x-overlay.md.
+"""Draft generation via the Claude CLI. Voice = voice-profile.personal.md + x-overlay.md.
 
 Scoring is a lightweight heuristic; the LLM does the heavy lifting on tone.
 """
@@ -13,8 +13,8 @@ from pathlib import Path
 from . import config, log
 
 ROOT = Path(__file__).resolve().parents[2]
-VOICE_PROFILE = ROOT / "voice-profile.md"
 VOICE_PROFILE_PERSONAL = ROOT / "voice-profile.personal.md"
+VOICE_PROFILE_EXAMPLE = ROOT / "voice-profile.example.md"
 X_OVERLAY = ROOT / "x-overlay.md"
 GOOD_DRAFTS = ROOT / "good-drafts.md"
 
@@ -23,9 +23,20 @@ GOOD_DRAFTS_INJECT_K = 3
 
 
 def _load_prompt_assets() -> tuple[str, str]:
-    # Prefer a local-only personal override if present (gitignored)
-    voice_path = VOICE_PROFILE_PERSONAL if VOICE_PROFILE_PERSONAL.exists() else VOICE_PROFILE
-    return voice_path.read_text(), X_OVERLAY.read_text()
+    """Load the personal voice profile + X overlay.
+
+    `voice-profile.personal.md` is required and gitignored — it holds your actual
+    voice. The repo only ships `voice-profile.example.md` as a starter template;
+    we never load it (so other users' published voice signals don't pollute the
+    drafter prompt or waste tokens).
+    """
+    if not VOICE_PROFILE_PERSONAL.exists():
+        raise FileNotFoundError(
+            f"Missing {VOICE_PROFILE_PERSONAL.name}. "
+            f"Copy {VOICE_PROFILE_EXAMPLE.name} to {VOICE_PROFILE_PERSONAL.name} "
+            f"and edit it with your voice before running fetch."
+        )
+    return VOICE_PROFILE_PERSONAL.read_text(), X_OVERLAY.read_text()
 
 
 def _parse_good_drafts(text: str) -> list[str]:
