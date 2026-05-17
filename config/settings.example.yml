@@ -2,7 +2,7 @@
 # Code-level panic ceilings in guardrails.md override anything here.
 
 # Daily volume
-daily_cap: 10                  # replies/day (research-backed default)
+daily_cap: 15                  # replies/day (research-backed default)
                                # Code rejects values > 25 (panic ceiling)
 
 # Pacing

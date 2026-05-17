@@ -41,7 +41,7 @@ def _check_halted() -> None:
 
 def _settings_or_panic() -> dict:
     s = config.settings()
-    s["daily_cap"] = config.safe_int(s.get("daily_cap", 10), 10, 1, config.PANIC["daily_cap_max"])
+    s["daily_cap"] = config.safe_int(s.get("daily_cap", 15), 15, 1, config.PANIC["daily_cap_max"])
     s["min_gap_between_publishes_sec"] = config.safe_int(
         s.get("min_gap_between_publishes_sec", 90), 90,
         lower=config.PANIC["min_gap_sec_floor"], upper=3600,

@@ -14,7 +14,7 @@ It is built for builders who reply on X deliberately — not to farm followers, 
 
 This tool drives a **logged-in browser session** on a real X account via Playwright. X's [automation rules](https://help.x.com/en/rules-and-policies/twitter-automation) prohibit certain automated activity. You are responsible for staying inside them.
 
-- The defaults (10 replies/day, 24h per-handle cooldown, jittered cadence, human-typed input, single device fingerprint) are research-tuned to look like a person who reads X actively. They are **not a guarantee** that an account won't be limited.
+- The defaults (15 replies/day, 24h per-handle cooldown, 90-120s jittered gap between publishes, human-typed input, single device fingerprint) are research-tuned to look like a person who reads X actively for ~25 minutes and replies as they go. They are **not a guarantee** that an account won't be limited.
 - Hard caps are enforced in code (`references/guardrails.md`) and **cannot be loosened via config**. Even if `config/settings.yml` says 50/day, the code uses 25.
 - If you crank volume or run multiple accounts, you will get flagged. Don't.
 - Every reply goes through chat approval. There is **no fully autonomous mode**. This is by design.
@@ -30,7 +30,7 @@ If your account is a critical business asset and you're not okay with any increm
 - A follower-band filter. Default 10K–80K: skips accounts where your reply is noise in a thousand-comment thread, and skips micro accounts where the thread has no audience
 - A drafting assistant. Generates a reply you can approve, redraft with one line of feedback, or kill
 - Fully human-gated. Every reply requires your explicit `approve` then `publish`. No autonomous mode exists and the code won't let you enable one
-- Volume-constrained by design. 10 replies/day default, 25 hard ceiling — enforced in code, not config
+- Volume-constrained by design. 15 replies/day default, 25 hard ceiling — enforced in code, not config
 
 **Isn't:**
 - A mass-reply bot or follower-growth hack
@@ -249,7 +249,7 @@ The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the hi
 
 | Key | Default | Notes |
 |---|---|---|
-| `daily_cap` | 10 | Code refuses values > 25 |
+| `daily_cap` | 15 | Code refuses values > 25 |
 | `min_gap_between_publishes_sec` | 90 | Code floor: 30 |
 | `voice_match_threshold` | 0.65 | Drafts below this never reach review |
 | `tz` | `UTC` | Target audience TZ, for daily-cap reset |

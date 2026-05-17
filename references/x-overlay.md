@@ -156,7 +156,7 @@ Before reaching the queue, drafts must score ≥ `voice_match_threshold` (defaul
 
 ## Daily cap (hardcoded, not config-overridable for volume up)
 
-- Default 10 replies/day. Override in `config/settings.yml`.
+- Default 15 replies/day. Override in `config/settings.yml`.
 - 25 replies/day absolute panic ceiling. Even if config says higher, code refuses.
 - Resets at 00:00 in the timezone set in `config/settings.yml` → `tz`.
 
