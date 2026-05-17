@@ -124,6 +124,8 @@ Mobile collapses replies after ~60-80 chars — first 3-5 words decide profile-c
 
 **Promo phrases (auto-reject anywhere in draft):** `I built`, `I made`, `check it out`, `shameless plug`, `DM me`, `link in bio`, `feel free to try`, `repo is`, `github.com`, `dancolta`.
 
+**Meta-disclosure ban (auto-reject anywhere in draft):** never reference the existence of this tool or describe the reply as automated. Banned: `x-engage`, `x engage`, `reply generator`, `reply bot`, `comment generator`, `comment bot`, `auto-reply`, `auto reply`, `automated reply`, `automated comment`. Other open-source projects of Dan's can be referenced via T4b — this specific tool cannot, since mentioning it in a reply would itself prove the reply was automated.
+
 **Validated openers (use these shapes):** dollar figure (`$80 and…`), number+unit (`3 weekends in…`), contrarian flag (`Inverse —`, `Counter-data point:`), noun-first observation (`Bottleneck was…`, `Latency disappears when…`), single sharp question (`What was the baseline…`).
 
 ## Links and hashtags
