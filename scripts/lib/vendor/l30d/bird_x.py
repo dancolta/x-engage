@@ -227,7 +227,19 @@ def _run_bird_search(query: str, count: int, timeout: int) -> Dict[str, Any]:
             return terminal_error
 
         if result.returncode != 0:
-            error = result.stderr.strip() or "Bird search failed"
+            # Bird sometimes exits non-zero but writes the structured error
+            # (e.g. {"error":"HTTP 429: Rate limit exceeded","items":[]}) to
+            # stdout. Prefer that over stderr so downstream classifiers
+            # (rate-limit vs auth-failure) see the real error string.
+            stdout_text = (result.stdout or "").strip()
+            if stdout_text:
+                try:
+                    parsed = json.loads(stdout_text)
+                    if isinstance(parsed, dict) and parsed.get("error"):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+            error = result.stderr.strip() or stdout_text or "Bird search failed"
             return {"error": error, "items": []}
 
         output = result.stdout.strip()
