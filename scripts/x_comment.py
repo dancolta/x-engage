@@ -162,7 +162,11 @@ def cmd_review() -> int:
               f"· {row['source_age_min']}min ago · score {row['score']:.2f}")
         print(f"  Source: \"{src}\"")
         print(f"  Draft:  \"{row['draft']}\"\n")
-    print("Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, or publish")
+    print("Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, good <id>, or publish")
+    # Surface the Notion log link so the user can cross-reference in their DB
+    db_id = config.env("NOTION_DB_ID") or ""
+    if db_id and (config.settings().get("notion") or {}).get("mirror_enabled", True):
+        print(f"\nNotion DB: https://www.notion.so/{db_id.replace('-', '')}")
     return 0
 
 

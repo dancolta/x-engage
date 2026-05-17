@@ -53,13 +53,15 @@ When `review` returns rows, render them in this exact format so the user can act
 
 After listing, prompt:
 ```
-Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, or publish
+Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, good <id>, or publish
 ```
+
+**Always end the review response with the Notion DB link** (parsed from `NOTION_DB_ID` in `.env`, formatted as `https://www.notion.so/<db_id_no_dashes>`). The CLI prints it automatically — preserve it in the rendered output.
 
 ## After completion
 
 - `fetch`: pulled / drafted / skipped counts. Mention Notion DB URL if mirror is enabled.
-- `review`: show drafts as above; do not summarize
+- `review`: show drafts as above; do not summarize. Always include the Notion DB link at the end (CLI prints it automatically).
 - `approve / redraft / kill / good`: confirm action in 1 line ("Approved #1, #3", "Redrafting #2…", "Killed #4", "Saved #5 as vibe reference")
 - `publish`: published / failed / deferred counts. Surface any safety signals
 - `status`: phase, today's count vs cap, paused state, queue counts
