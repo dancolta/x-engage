@@ -396,6 +396,7 @@ export function mapTweetResult(result, quoteDepthOrOptions) {
         author: {
             username,
             name: name || username,
+            followersCount: userLegacy?.followers_count,
         },
         authorId: userId,
         quotedTweet,

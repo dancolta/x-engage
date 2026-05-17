@@ -205,6 +205,23 @@ def _bird_search_with_precise_time(query: str, from_date: str, to_date: str,
             item["date"] = precise  # full ISO; flows through normalize → SourceItem.published_at
         if raw.get("id"):
             item["id"] = str(raw["id"])  # real tweet id, replaces "X1"/"X2"/...
+        # Inject author follower count into engagement dict so the follower-bounds
+        # filter (and the SQLite source_followers column) actually have data to work
+        # with. Bird's JS layer exposes it as author.followersCount; the vendored
+        # parse_bird_response builds engagement but doesn't carry author metrics.
+        author = (raw.get("author") or raw.get("user") or {})
+        followers_raw = (author.get("followersCount")
+                         if "followersCount" in author
+                         else author.get("followers_count"))
+        if followers_raw is not None:
+            try:
+                followers_int = int(followers_raw)
+            except (TypeError, ValueError):
+                followers_int = None
+            if followers_int is not None:
+                eng = item.get("engagement") or {}
+                eng["followers"] = followers_int
+                item["engagement"] = eng
     return parsed
 
 
@@ -325,6 +342,13 @@ def fetch_candidates() -> list[SourceItem]:
 
         bounds = _topic_filters_for(str(item.metadata.get("subquery_label") or ""))
         followers = _engagement_followers(item)
+        # Fail-closed: if min_followers > 0 and we don't have a count, skip the
+        # post rather than letting it through. Prevents the previous bug where
+        # unparseable follower data silently bypassed the filter and let
+        # small accounts through under topic-search queries.
+        if bounds["min_followers"] > 0 and followers <= 0:
+            log.info("filter_skip_no_followers", author=author, label=item.metadata.get("subquery_label"))
+            continue
         if followers and not (bounds["min_followers"] <= followers <= bounds["max_followers"]):
             continue
         if followers and bounds["min_engagement_rate"] > 0:
