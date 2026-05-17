@@ -1,6 +1,7 @@
 ---
 name: x-engage
 description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-engage", "x-engage", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status".
+allowed-tools: Bash
 ---
 
 # /x-engage
@@ -8,6 +9,19 @@ description: Drafts X (Twitter) replies in your voice and queues them for in-cha
 Thin wrapper over the local `x-engage` checkout.
 
 Set `X_ENGAGE_DIR` in your environment (or this skill's caller config) to the absolute path of your local clone. Defaults to `~/Work/x-engage` if unset.
+
+## Examples
+
+Map user phrasings to subcommands:
+
+- `"/x-engage"` or `"draft some x replies"` or `"scan x"` → `fetch`
+- `"show me the x queue"` or `"review x drafts"` → `review`
+- `"approve 1, 3, 5"` or `"approve all"` → `approve 1,3,5` / `approve all`
+- `"redraft 2 shorter, drop the question"` → `redraft 2: shorter, drop the question`
+- `"kill #4"` or `"drop draft 4"` → `kill 4`
+- `"save #5 as a good one"` or `"mark 5 good"` → `good 5`
+- `"ship it"` or `"publish approved"` → `publish`
+- `"x status"` or `"how many replies left today"` → `status`
 
 ## Args
 
@@ -65,6 +79,15 @@ Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, good <id>, o
 - `approve / redraft / kill / good`: confirm action in 1 line ("Approved #1, #3", "Redrafting #2…", "Killed #4", "Saved #5 as vibe reference")
 - `publish`: published / failed / deferred counts. Surface any safety signals
 - `status`: phase, today's count vs cap, paused state, queue counts
+
+## References
+
+Heavy content lives in `references/` and is loaded by the scripts at runtime, not by Claude when this SKILL.md loads:
+
+- `references/x-overlay.md` — X-platform reply rules (T1–T7 templates, length bands, banned openers, Phoenix-ranker tuning). Loaded by `scripts/lib/voice.py` into the drafter prompt.
+- `references/guardrails.md` — long-form safety reasoning (account-pause triggers, cookie rotation, posting cadence). Reference doc for humans; the executable rules are in `scripts/lib/safety.py`.
+
+You don't need to read these to invoke the skill — the scripts handle it.
 
 ## Critical: safety + auth signals
 

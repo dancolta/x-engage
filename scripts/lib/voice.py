@@ -15,7 +15,7 @@ from . import config, log
 ROOT = Path(__file__).resolve().parents[2]
 VOICE_PROFILE_PERSONAL = ROOT / "voice-profile.personal.md"
 VOICE_PROFILE_EXAMPLE = ROOT / "voice-profile.example.md"
-X_OVERLAY = ROOT / "x-overlay.md"
+X_OVERLAY = ROOT / "references" / "x-overlay.md"
 GOOD_DRAFTS = ROOT / "good-drafts.md"
 
 # How many good-draft examples to inject per call (random subset, prevents lock-in)

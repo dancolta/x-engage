@@ -15,7 +15,7 @@ It is built for **personal-brand operators** who already publish on X and want d
 This tool drives a **logged-in browser session** on a real X account via Playwright. X's [automation rules](https://help.x.com/en/rules-and-policies/twitter-automation) prohibit certain automated activity. You are responsible for staying inside them.
 
 - The defaults (10 replies/day, 24h per-handle cooldown, jittered cadence, human-typed input, single device fingerprint) are research-tuned to look like a person who reads X actively. They are **not a guarantee** that an account won't be limited.
-- Hard caps are enforced in code (`guardrails.md`) and **cannot be loosened via config**. Even if `config/settings.yml` says 50/day, the code uses 25.
+- Hard caps are enforced in code (`references/guardrails.md`) and **cannot be loosened via config**. Even if `config/settings.yml` says 50/day, the code uses 25.
 - If you crank volume or run multiple accounts, you will get flagged. Don't.
 - Every reply goes through chat approval. There is **no fully autonomous mode**. This is by design.
 
@@ -62,7 +62,7 @@ Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
 
 The discovery pipeline (`bird_x → normalize → signals → dedupe → snippet`) is vendored verbatim from the [`last30days`](https://github.com/YOUR-USER/last30days) skill into `scripts/lib/vendor/l30d/`, so candidate quality and ranking match what `/last30days` produces for X. Bird uses your browser session cookies (`AUTH_TOKEN` + `CT0` from `.env`) and runs as a Node subprocess — same auth model as your Playwright posting setup, zero API cost.
 
-The reply-drafting voice is defined in `voice-profile.personal.md` (gitignored — copy `voice-profile.example.md` to it and edit). `x-overlay.md` layers X-specific constraints on top — character minimums, opener rotation, banned spam triggers, constructive-tone requirement (the Jan 2026 Grok ranker actively suppresses combative replies regardless of engagement).
+The reply-drafting voice is defined in `voice-profile.personal.md` (gitignored — copy `voice-profile.example.md` to it and edit). `references/x-overlay.md` layers X-specific constraints on top — character minimums, opener rotation, banned spam triggers, constructive-tone requirement (the Jan 2026 Grok ranker actively suppresses combative replies regardless of engagement).
 
 ## Quick start
 
@@ -107,7 +107,7 @@ Edit each file:
 - **`config/topics.yml`** — keyword searches mapped to topic buckets
 - **`config/settings.yml`** — daily cap, timezone, posting windows, voice-match threshold
 - **`voice-profile.personal.md`** — your underlying voice. **Required, gitignored.** Copy `voice-profile.example.md` to `voice-profile.personal.md` and edit. The skill only ever reads `voice-profile.personal.md` — the example file is a starter template, never loaded (no token waste, no leaked voice signals to/from the public repo).
-- **`x-overlay.md`** — X-specific constraints (length floor, opener rotation, banned patterns)
+- **`references/x-overlay.md`** — X-specific constraints (length floor, opener rotation, banned patterns)
 
 ### 4. Notion database (optional)
 
@@ -235,12 +235,12 @@ The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the hi
 | `require_explicit_approval` | `true` | Code refuses to flip this false |
 | `banned_terms` | `[]` | Terms that auto-reject any draft containing them (your custom blocklist — competitor names, ex-employer names, etc.) |
 
-### `voice-profile.personal.md` and `x-overlay.md`
+### `voice-profile.personal.md` and `references/x-overlay.md`
 
 Two files by design:
 
 - **`voice-profile.personal.md`** — *who you are*. Underlying voice DNA. Required, gitignored. Copy from `voice-profile.example.md` and edit. The skill only reads this file (never the example) so a fork's published voice signals don't pollute your drafter prompt or waste tokens.
-- **`x-overlay.md`** — *platform constraints*. Length floor, opener rotation, banned shapes derived from May 2026 X research. Edit when X behavior changes; don't touch your voice file.
+- **`references/x-overlay.md`** — *platform constraints*. Length floor, opener rotation, banned shapes derived from May 2026 X research. Edit when X behavior changes; don't touch your voice file.
 
 This split lets you tune voice without breaking guardrails, and guardrails without breaking voice.
 
@@ -268,7 +268,7 @@ You can also create `bad-drafts.md` later for negative examples (anti-patterns t
 
 ## Safety knobs
 
-The following are **hardcoded ceilings** in `guardrails.md` and `scripts/lib/config.py`. Config cannot loosen them:
+The following are **hardcoded ceilings** in `references/guardrails.md` and `scripts/lib/config.py`. Config cannot loosen them:
 
 - 25 replies/day absolute panic ceiling
 - 30s minimum publish gap
@@ -332,8 +332,8 @@ config/
 └── *.yml                   # gitignored, your real config
 voice-profile.example.md    # generic template (tracked, never loaded)
 voice-profile.personal.md   # gitignored — REQUIRED, the only voice file the skill reads
-x-overlay.md                # X-platform constraints
-guardrails.md               # hard caps + kill switches
+references/x-overlay.md                # X-platform constraints
+references/guardrails.md               # hard caps + kill switches
 SKILL.md                    # Claude Code skill manifest
 ```
 
