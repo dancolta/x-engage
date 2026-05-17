@@ -1,10 +1,10 @@
 # x-engage
 
-> Authority-build automation for X (Twitter) — drafts replies in your voice, queues them for your approval in chat, then publishes via Playwright on your logged-in session.
+> A qualification pipeline for X: surfaces posts worth replying to from accounts you already track, drafts a starting point in your voice, and waits for your explicit approval before anything ships.
 
-`x-engage` is a [Claude Code](https://claude.ai/code) skill that turns the reply-guy growth strategy into a reviewable pipeline. It fetches candidate posts from a list of tracked accounts and topic searches you define, drafts replies that match your voice profile, scores them against deterministic safety filters, and waits for your in-chat approval before posting anything.
+`x-engage` is a [Claude Code](https://claude.ai/code) skill. It filters a curated list of tracked accounts + topic keywords down to the small subset of posts where a thoughtful reply is actually worth your time, scores each candidate, drafts in your voice, and queues them for chat review. Nothing publishes until you run `approve` and then `publish`.
 
-It is built for **personal-brand operators** who already publish on X and want disciplined daily reply activity without becoming a bot or babysitting a queue.
+It is built for builders who reply on X deliberately — not to farm followers, but because the right reply to the right person at the right moment is a real signal that compounds.
 
 ![demo](assets/demo.gif)
 
@@ -23,7 +23,25 @@ If your account is a critical business asset and you're not okay with any increm
 
 ---
 
-## What it does
+## What this is (and isn't)
+
+**Is:**
+- A signal filter. Pulls only from `accounts.yml` (handles you curated) + `topics.yml` (keywords you defined) — not a firehose
+- A follower-band filter. Default 10K–80K: skips accounts where your reply is noise in a thousand-comment thread, and skips micro accounts where the thread has no audience
+- A drafting assistant. Generates a reply you can approve, redraft with one line of feedback, or kill
+- Fully human-gated. Every reply requires your explicit `approve` then `publish`. No autonomous mode exists and the code won't let you enable one
+- Volume-constrained by design. 10 replies/day default, 25 hard ceiling — enforced in code, not config
+
+**Isn't:**
+- A mass-reply bot or follower-growth hack
+- A DM tool (doesn't touch DMs)
+- A scheduler that publishes on your behalf while you sleep
+- A scraper of strangers' content — only fetches posts from accounts and topics you explicitly defined
+- A guarantee against X flagging your account (see the warning section above)
+
+---
+
+## How it works
 
 ```
 Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
@@ -59,6 +77,10 @@ Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
                        ▼
        Playwright posts to X (headed, humanized)
 ```
+
+Your `accounts.yml` and `topics.yml` define the input universe. The pipeline queries those handles and keywords, scores each post on relevance + freshness + engagement, enforces the follower-band filter, deduplicates across queries, and drops everything that doesn't clear the threshold. What survives gets a draft reply generated against your `voice-profile.personal.md`. Safety lint runs, voice score gates, and the remainder lands in a SQLite queue.
+
+From there it's entirely yours: `fetch` builds the queue, `review` surfaces it in chat, `approve` or `kill` each draft, `redraft <id> "<feedback>"` if the draft is close but not right, `good <id>` to save a draft as a vibe reference for future runs, `publish` to ship what you approved. That's the whole loop.
 
 The discovery pipeline (`bird_x → normalize → signals → dedupe → snippet`) is vendored verbatim from the [`last30days`](https://github.com/YOUR-USER/last30days) skill into `scripts/lib/vendor/l30d/`, so candidate quality and ranking match what `/last30days` produces for X. Bird uses your browser session cookies (`AUTH_TOKEN` + `CT0` from `.env`) and runs as a Node subprocess — same auth model as your Playwright posting setup, zero API cost.
 
