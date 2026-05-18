@@ -10,9 +10,9 @@ topics:
       - "building in public"
       - "shipped my first"
       - "weekend project"
-    min_followers: 800        # skip authors below this size (per x-overlay.md sweet spot)
+    min_followers: 500        # skip authors below this size (per x-overlay.md sweet spot)
     max_followers: 250000      # skip whales unless explicitly listed in accounts.yml
-    min_engagement_rate: 0.001  # skip dead-engagement accounts
+    min_engagement_rate: 0.0003  # skip dead-engagement accounts
     max_results_per_query: 20  # candidates pulled per query per run
 
   - name: ai_for_ops
@@ -20,9 +20,9 @@ topics:
       - "AI replacing SaaS"
       - "automated my workflow"
       - "claude code"
-    min_followers: 800
+    min_followers: 500
     max_followers: 250000
-    min_engagement_rate: 0.001
+    min_engagement_rate: 0.0003
     max_results_per_query: 20
 
   - name: solo_founder_growth
@@ -30,15 +30,15 @@ topics:
       - "solo founder"
       - "indie hacker"
       - "bootstrapped"
-    min_followers: 800
+    min_followers: 500
     max_followers: 100000
-    min_engagement_rate: 0.001
+    min_engagement_rate: 0.0003
     max_results_per_query: 15
 
 # Global rules applied to all topic searches:
 rules:
   language: en                 # English only (matches voice-profile.md)
-  max_age_minutes: 60
+  max_age_minutes: 240
   min_age_minutes: 5
   skip_replies: true
   skip_retweets: true
