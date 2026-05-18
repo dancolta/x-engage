@@ -1,5 +1,7 @@
 # x-engage
 
+![x-engage cover](assets/cover.gif)
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
