@@ -108,6 +108,8 @@ No paid API needed. Cookies are read locally and never leave your machine.
 
 The interactive wizard will walk you through the rest — Playwright login, voice profile customization, optional Notion mirror, and a verification check.
 
+![setup wizard demo](assets/setup-wizard.gif)
+
 ---
 
 ## Usage
@@ -168,9 +170,15 @@ How the split works:
 
 Daemon is opt-in. Default = off. Runs at OS level via launchd, costs ~3 sec CPU per cycle.
 
+![daemon scanning demo](assets/daemon-scan.gif)
+
 ---
 
 ## How it works
+
+![filter funnel](assets/filter-funnel.gif)
+
+237 raw posts from your tracked accounts and topic queries → filter chain → drafter → 8 reviewable drafts. The funnel exists so every reply you see has already cleared the recency, follower-band, dedup, and AI-cadence checks. Pipeline detail:
 
 ```
 accounts.yml + topics.yml
