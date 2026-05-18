@@ -484,8 +484,24 @@ def cmd_scan_bg() -> int:
 def cmd_run_bg() -> int:
     """Install + load the launchd plist so scan-bg runs every 10 min."""
     import shutil
+    import os
     project_root = Path(__file__).resolve().parents[1]
     python = shutil.which("python3") or "/usr/bin/python3"
+    node = shutil.which("node") or ""
+    # launchd doesn't inherit shell PATH, so node/python locations must be
+    # explicit. Build a PATH that includes the dirs holding our interpreters
+    # + standard system bin dirs the bird-search subprocess might call.
+    path_parts: list[str] = []
+    if node:
+        path_parts.append(str(Path(node).parent))
+    if python:
+        path_parts.append(str(Path(python).parent))
+    path_parts.extend(["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"])
+    # Dedup preserving order
+    seen: set[str] = set()
+    deduped = [p for p in path_parts if not (p in seen or seen.add(p))]
+    daemon_path = ":".join(deduped)
+
     plist_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -502,6 +518,13 @@ def cmd_run_bg() -> int:
   </array>
   <key>WorkingDirectory</key>
   <string>{project_root}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{daemon_path}</string>
+    <key>HOME</key>
+    <string>{os.path.expanduser('~')}</string>
+  </dict>
   <key>StartInterval</key>
   <integer>600</integer>
   <key>RunAtLoad</key>
