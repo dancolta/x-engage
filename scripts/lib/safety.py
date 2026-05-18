@@ -150,6 +150,19 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str]) -> 
         return False, "exclamation mark banned"
     if "—" in text or "–" in text:
         return False, "em/en dash banned"
+    # Quote-wrapped phrases read as AI ("the 'nobody renting' stretch", etc.).
+    # Ban all double quotes + smart single quotes outright.
+    if '"' in text or "“" in text or "”" in text:
+        return False, "double quotes banned"
+    if "‘" in text or "’" in text:
+        return False, "smart single quotes banned"
+    # Straight apostrophes are allowed in contractions (don't, it's, that's)
+    # but NOT as phrase wrappers. Detect: an apostrophe preceded by whitespace
+    # or string-start AND followed within ~30 chars by another apostrophe that
+    # is followed by whitespace or punctuation. Catches: 'nobody renting',
+    # 'aha moment', leading 'word'. Misses are OK — anti-spam, not anti-style.
+    if re.search(r"(?:^|\s)'[^']{1,40}'(?=\s|[.,!?;:]|$)", text):
+        return False, "straight quote-wrapped phrase banned (use bare word or paraphrase)"
     if URL_RE.search(text):
         return False, "contains URL"
     extra_handles = [h.strip().lstrip("@").lower() for h in HANDLE_RE.findall(text)]
