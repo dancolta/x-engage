@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import bird_health, claude_client, config, log, state
+from . import bird_health, claude_client, config, fetch_cache, log, state
 from .vendor.l30d import (
     bird_x,
     dedupe as _dedupe,
@@ -40,17 +40,27 @@ SourceItem = _schema.SourceItem
 def _build_subqueries() -> list[tuple[str, str]]:
     """Return [(label, search_query), ...].
 
-    - Tracked accounts → `from:@handle` subqueries (no planner expansion needed).
-    - Topics → each user-provided query becomes a subquery. If planner.enabled
-      is true and the claude CLI is available, ALSO call planner.plan_query()
-      per topic to get LLM-expanded semantic variants. The user's manual queries
-      and the planner's variants are deduped before searching.
+    Subquery budget is tight by design to stay inside X's ~150 req/15min
+    cookie limit:
+      - Tracked accounts are OR-batched (`from:a OR from:b OR ...`) in
+        groups of `account_or_batch_size` (default 9) instead of one
+        subquery per handle. 18 handles → 2 subqueries.
+      - Topics use ONLY the user's manual queries from topics.yml. Planner
+        semantic expansion is OFF by default (`planner.enabled: false`) —
+        the LLM produces worse paraphrases of what's already in topics.yml
+        and burned 25+ extra bird calls per run. Set planner.enabled: true
+        only if you observe missed candidates.
+      - A global `max_subqueries_per_run` cap (default 35) truncates with
+        a WARN if the total exceeds it, as a safety net against config
+        drift (e.g. adding a 20th topic without thinking).
     """
     settings = config.settings()
     planner_cfg = settings.get("planner") or {}
-    planner_enabled = bool(planner_cfg.get("enabled", True))
+    planner_enabled = bool(planner_cfg.get("enabled", False))
     planner_model = str(planner_cfg.get("model") or "claude-sonnet-4-6")
     planner_depth = str(planner_cfg.get("depth") or "default")
+    or_batch_size = max(1, int(settings.get("account_or_batch_size", 9)))
+    max_subs = max(1, int(settings.get("max_subqueries_per_run", 35)))
 
     subs: list[tuple[str, str]] = []
     seen_queries: set[str] = set()
@@ -61,23 +71,30 @@ def _build_subqueries() -> list[tuple[str, str]]:
             seen_queries.add(key)
             subs.append((label, q.strip()))
 
-    # Tracked accounts
+    # Tracked accounts — OR-batched
     acc_cfg = config.accounts()
+    handles: list[str] = []
     for entry in (acc_cfg.get("accounts") or []):
         handle = entry.get("handle") if isinstance(entry, dict) else entry
         if handle:
-            _add(f"account:{handle}", f"from:{handle}")
+            handles.append(str(handle).lstrip("@"))
+    for i in range(0, len(handles), or_batch_size):
+        chunk = handles[i:i + or_batch_size]
+        if not chunk:
+            continue
+        q = " OR ".join(f"from:{h}" for h in chunk)
+        label = f"accounts:batch{i // or_batch_size + 1}"
+        _add(label, q)
 
-    # Topics — manual + planner-expanded
+    # Topics — manual queries only (planner OFF by default)
     provider = claude_client.build_provider() if planner_enabled else None
     topic_cfg = config.topics()
     for topic in (topic_cfg.get("topics") or []):
         name = str(topic.get("name") or "?")
         user_queries = [str(q) for q in (topic.get("queries") or []) if q]
-        # Always include user-provided queries first
         for q in user_queries:
             _add(name, q)
-        # Planner expansion: ask Claude CLI to expand the topic into semantic variants
+        # Optional planner expansion — disabled by default
         if provider:
             try:
                 plan = _planner.plan_query(
@@ -100,11 +117,21 @@ def _build_subqueries() -> list[tuple[str, str]]:
                 log.info("planner_expansion", topic=name, added=added)
             except Exception as e:
                 log.warn("planner_failed", topic=name, err=str(e))
+
+    # Global cap — truncate with WARN if config drift pushed us past the budget
+    if len(subs) > max_subs:
+        log.warn("subquery_cap_truncated",
+                 total=len(subs), cap=max_subs,
+                 dropped=len(subs) - max_subs)
+        subs = subs[:max_subs]
     return subs
 
 
 def _topic_filters_for(label: str) -> dict[str, Any]:
-    if label.startswith("account:"):
+    # Tracked-account subqueries (singular "account:" legacy + batched "accounts:")
+    # skip the follower-band filter — those handles were pre-curated, so the
+    # band rule doesn't apply.
+    if label.startswith("account:") or label.startswith("accounts:"):
         return {"min_followers": 0, "max_followers": 10**9, "min_engagement_rate": 0.0}
     topic_cfg = config.topics()
     for topic in (topic_cfg.get("topics") or []):
@@ -185,7 +212,11 @@ def _bird_search_with_precise_time(query: str, from_date: str, to_date: str,
         _time.sleep(45)
         response = _search_once()
         if bird_health.looks_like_rate_limit(response):
-            log.warn("bird_rate_limited_persist", query=query[:60], action="skip subquery, do NOT pause")
+            # Persistent rate-limit: write a cooldown marker so subsequent
+            # fetch_candidates() calls exit cleanly until X's window clears,
+            # instead of burning more quota into the same throttled state.
+            fetch_cache.write_cooldown(reason=f"persistent 429 on subquery: {query[:60]}")
+            log.warn("bird_rate_limited_persist", query=query[:60], action="skip + set cooldown")
             return []
     if bird_health.looks_like_auth_failure(response):
         err = str(response.get("error") if isinstance(response, dict) else response)
@@ -273,6 +304,18 @@ def fetch_candidates() -> list[SourceItem]:
                   hint="copy auth_token + ct0 from x.com DevTools cookies into .env")
         return []
 
+    # Preflight: rate-limit cooldown from a previous run. Exit cleanly so we
+    # don't burn quota into an already-throttled window. User can manually
+    # bust it via `rm ~/.x-engage/RATE_LIMIT_COOLDOWN` if they know better.
+    cooldown = fetch_cache.cooldown_seconds_remaining()
+    if cooldown > 0:
+        mins = (cooldown + 59) // 60
+        log.warn("fetch_skipped_cooldown", seconds_remaining=cooldown)
+        print(f"fetch: rate-limit cooldown active ({mins} min remaining). "
+              f"X is throttling; bird calls would just hit 429. "
+              f"To override: rm ~/.x-engage/RATE_LIMIT_COOLDOWN")
+        return []
+
     # Preflight: validate cookies before spending time / API calls
     health = bird_health.check_auth()
     if not health.authenticated:
@@ -303,9 +346,20 @@ def fetch_candidates() -> list[SourceItem]:
         log.warn("no_subqueries",
                  hint="add accounts to config/accounts.yml or topics to config/topics.yml")
         return []
+    log.info("subqueries_built", count=len(subqueries))
 
-    all_items: list[SourceItem] = []
-    for label, q in subqueries:
+    # Cache hit short-circuits the whole bird/normalize/signals stack.
+    # Downstream filters (age window, seen-posts, cooldown, follower band)
+    # still run against the cached pool so the queue still evolves between
+    # calls — we just don't re-hit X.
+    cache_ttl = int(settings.get("fetch_cache_ttl_sec", 300))
+    cached_pool = fetch_cache.load_pool(subqueries, from_date, cache_ttl)
+    if cached_pool is not None:
+        all_items = cached_pool
+    else:
+        all_items = []
+
+    for label, q in subqueries if cached_pool is None else []:
         log.info("bird_search", label=label, query=q[:80])
         try:
             parsed = _bird_search_with_precise_time(q, from_date, to_date, depth="quick")
@@ -333,6 +387,11 @@ def fetch_candidates() -> list[SourceItem]:
 
     if not all_items:
         return []
+
+    # Cache the cold-fetched pool so the next call within fetch_cache_ttl_sec
+    # reuses it. Only cache fresh fetches, not pools we just loaded from cache.
+    if cached_pool is None:
+        fetch_cache.save_pool(subqueries, from_date, all_items)
 
     all_items = _dedupe.dedupe_items(all_items)
     all_items.sort(key=lambda i: i.local_rank_score or 0.0, reverse=True)
