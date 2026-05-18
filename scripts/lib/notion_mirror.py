@@ -116,6 +116,20 @@ def update_status(page_id: str, internal_status: str,
     _request("PATCH", f"/pages/{page_id}", {"properties": props})
 
 
+def update_draft_text(page_id: str, new_draft: str) -> None:
+    """Sync the `draft` rich_text field after a redraft. Without this, Notion
+    keeps showing the old draft text while SQLite has the new one — confusing
+    when Dan reviews from Notion.
+    """
+    if not _enabled() or not page_id:
+        return
+    _request("PATCH", f"/pages/{page_id}", {
+        "properties": {
+            "draft": {"rich_text": [{"text": {"content": (new_draft or "")[:1900]}}]},
+        }
+    })
+
+
 def archive_page(page_id: str) -> None:
     """Archive a Notion page (sets archived=true). Used after publish so the active
     queue view stays clean — matches /linkedin-comment's pattern.

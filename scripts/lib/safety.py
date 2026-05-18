@@ -59,8 +59,13 @@ NEG_WORDS = re.compile(r"\b(not|isn't|wasn't|aren't|won't)\b", re.IGNORECASE)
 # Listicle-wisdom triggers
 LISTICLE_PATTERNS = (
     "the most underrated", "the real ", "the actual ", "where most ",
-    "tell you everything", "separates", "the screen", "the filter",
+    "tell you everything", "tells you everything", "separates", "the screen", "the filter",
     "the test that", "everyone talks about", "where the wheels come off",
+    # AI-cadence tells caught during voice review
+    "the combination is the whole story", "that's the whole story",
+    "is the whole story", "worth a second pass", "worth revisiting",
+    "counter-data point", "same pattern —", "same here —", "inverse —",
+    "same pattern,", "same here,",  # without dash variants
 )
 
 

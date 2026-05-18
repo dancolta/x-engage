@@ -254,6 +254,9 @@ def cmd_redraft(args: list[str]) -> int:
         draft=new_draft, score=score,
         feedback=feedback, redraft_count=row["redraft_count"] + 1,
     )
+    # Sync the new text back to Notion so the DB row matches SQLite.
+    if row.get("notion_page_id"):
+        notion_mirror.update_draft_text(row["notion_page_id"], new_draft)
     print(f"redraft #{tid}: score {score:.2f}")
     print(f'  Draft: "{new_draft}"')
     return 0
