@@ -12,8 +12,40 @@ from pathlib import Path
 # Make `from scripts.lib...` work when invoked as `python -m scripts.x_engage`
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.lib import config, log, state, voice, safety, notion_mirror
+from scripts.lib import candidate_pool, config, log, state, voice, safety, notion_mirror
 from scripts.lib.fetch import fetch_candidates, CookiesExpired
+
+
+def _pool_rows_to_items(rows: list[dict]) -> list:
+    """Convert candidate_pool rows into SourceItem-shaped objects so the rest
+    of cmd_fetch (drafter, lint, scorer) works unchanged. Computes age_min
+    fresh from posted_at so stale rows are filtered downstream.
+    """
+    from datetime import datetime, timezone
+    from scripts.lib.vendor.l30d.schema import SourceItem
+    now = datetime.now(timezone.utc)
+    items: list = []
+    for r in rows:
+        posted_at_dt = datetime.fromtimestamp(r["posted_at"], tz=timezone.utc)
+        age_min = int((now - posted_at_dt).total_seconds() / 60)
+        item = SourceItem(
+            item_id=r["item_id"],
+            source="x",
+            title="",
+            body=r["source_text"],
+            url=r["source_url"],
+            author=r["author"],
+            published_at=posted_at_dt.isoformat(),
+            engagement={"followers": int(r["source_followers"] or 0)},
+            metadata={
+                "age_min": age_min,
+                "subquery_label": r["subquery_label"] or "",
+                "from_pool": True,
+            },
+        )
+        item.local_rank_score = float(r["relevance_score"] or 0.0)
+        items.append(item)
+    return items
 
 
 def _author(item) -> str:
@@ -71,25 +103,40 @@ def cmd_fetch() -> int:
         return 0
 
     log.info("fetch_start", capacity=capacity)
-    try:
-        candidates = fetch_candidates()
-    except CookiesExpired as e:
-        print(f"COOKIES_EXPIRED: {e}")
-        print("Fix: log out + back in on x.com, copy fresh auth_token + ct0 from")
-        print("DevTools (Application → Cookies → x.com) into .env, then delete")
-        print(f"{Path.home() / '.x-engage' / 'PAUSED'} to resume.")
-        return 2
+
+    # PATH 1: try the candidate pool first. If the background daemon
+    # (`run-bg`) is running, the pool has fresh items ready and we skip
+    # bird entirely. Drafting becomes 2-3 min instead of 5+.
+    max_age = config.safe_int(settings.get("max_age_minutes", 35), 35, 5, 1440)
+    pool_rows = candidate_pool.list_fresh(limit=capacity * 3, max_age_min=max_age)
+    if pool_rows:
+        candidates = _pool_rows_to_items(pool_rows)
+        log.info("fetch_source", source="pool", count=len(candidates))
+    else:
+        # PATH 2 (fallback): no fresh pool → run live discovery, current behavior.
+        log.info("fetch_source", source="live")
+        try:
+            candidates = fetch_candidates()
+        except CookiesExpired as e:
+            print(f"COOKIES_EXPIRED: {e}")
+            print("Fix: log out + back in on x.com, copy fresh auth_token + ct0 from")
+            print("DevTools (Application → Cookies → x.com) into .env, then delete")
+            print(f"{Path.home() / '.x-engage' / 'PAUSED'} to resume.")
+            return 2
     log.info("candidates_count", n=len(candidates))
 
     drafted = 0
     skipped = 0
     rejected = 0
+    drafted_pool_ids: list[str] = []
     recent_openers = state.recent_openers(limit=5)
 
     for item in candidates:
         if drafted >= capacity:
             break
         state.mark_seen(item.item_id)
+        if (item.metadata or {}).get("from_pool"):
+            drafted_pool_ids.append(item.item_id)
         author = _author(item)
         followers = _followers(item)
         age_min = int(item.metadata.get("age_min") or 0)
@@ -161,6 +208,12 @@ def cmd_fetch() -> int:
         state.record_opener(safety.extract_opener(draft))
         recent_openers = state.recent_openers(limit=5)
         drafted += 1
+
+    # Mark pool-sourced items as drafted so they're not re-picked next run.
+    # Done in one batch at the end so a mid-run crash leaves the rows
+    # selectable next time rather than orphaning them.
+    if drafted_pool_ids:
+        candidate_pool.mark_drafted(drafted_pool_ids)
 
     print(f"fetch: drafted={drafted}, skipped={skipped}, rejected={rejected}, candidates={len(candidates)}")
     db_id = config.env("NOTION_DB_ID")
@@ -375,6 +428,137 @@ def cmd_publish() -> int:
     return 0
 
 
+# --- daemon subcommands ---
+
+PLIST_LABEL = "com.x-engage.scan-bg"
+PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{PLIST_LABEL}.plist"
+
+
+def cmd_scan_bg() -> int:
+    """One-shot background scan: bird/discovery → filter → write to candidate_pool.
+    Called by launchd every 10 min. Never drafts — drafting only happens when
+    Dan runs `/x-engage fetch` in chat.
+    """
+    _check_halted()
+    try:
+        candidates = fetch_candidates()
+    except CookiesExpired as e:
+        log.warn("scan_bg_cookies_expired", err=str(e))
+        return 2
+    except Exception as e:
+        log.warn("scan_bg_failed", err=str(e))
+        return 1
+
+    written = 0
+    for item in candidates:
+        author = (item.author or "").lstrip("@").strip()
+        if not author:
+            continue
+        try:
+            from datetime import datetime, timezone
+            pub_dt = datetime.fromisoformat((item.published_at or "").replace("Z", "+00:00"))
+            posted_at = int(pub_dt.timestamp())
+        except (ValueError, TypeError, AttributeError):
+            continue
+        followers = _followers(item)
+        candidate_pool.upsert(
+            item_id=item.item_id,
+            author=author,
+            source_text=item.body or item.title or "",
+            source_url=item.url or "",
+            source_followers=followers,
+            posted_at=posted_at,
+            subquery_label=str((item.metadata or {}).get("subquery_label") or ""),
+            relevance_score=float(item.local_rank_score or 0.0),
+        )
+        written += 1
+
+    evicted = candidate_pool.evict_stale()
+    stats = candidate_pool.pool_stats()
+    log.info("scan_bg_done", written=written, evicted=evicted, pool=stats)
+    print(f"scan-bg: wrote={written}, evicted={evicted}, "
+          f"pool={stats['available']}/{stats['total']} available")
+    return 0
+
+
+def cmd_run_bg() -> int:
+    """Install + load the launchd plist so scan-bg runs every 10 min."""
+    import shutil
+    project_root = Path(__file__).resolve().parents[1]
+    python = shutil.which("python3") or "/usr/bin/python3"
+    plist_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{PLIST_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{python}</string>
+    <string>-m</string>
+    <string>scripts.x_engage</string>
+    <string>scan-bg</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{project_root}</string>
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>{project_root}/logs/scan-bg.out</string>
+  <key>StandardErrorPath</key>
+  <string>{project_root}/logs/scan-bg.err</string>
+</dict>
+</plist>
+"""
+    PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PLIST_PATH.write_text(plist_xml)
+    (project_root / "logs").mkdir(exist_ok=True)
+
+    import subprocess
+    # Unload first in case it's already running with a stale config
+    subprocess.run(["launchctl", "unload", str(PLIST_PATH)], capture_output=True)
+    r = subprocess.run(["launchctl", "load", str(PLIST_PATH)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"run-bg: launchctl load failed — {r.stderr.strip()}")
+        return 1
+    print(f"run-bg: daemon loaded (runs every 10 min). Plist at {PLIST_PATH}")
+    print(f"  Logs: {project_root}/logs/scan-bg.{{out,err}}")
+    print(f"  Stop with: /x-engage stop-bg")
+    return 0
+
+
+def cmd_stop_bg() -> int:
+    """Unload the launchd plist. Daemon stops; existing pool stays."""
+    import subprocess
+    if not PLIST_PATH.exists():
+        print("stop-bg: daemon not installed (no plist found)")
+        return 0
+    r = subprocess.run(["launchctl", "unload", str(PLIST_PATH)], capture_output=True, text=True)
+    print(f"stop-bg: daemon unloaded (plist remains at {PLIST_PATH}; rm to fully remove)")
+    return 0
+
+
+def cmd_bg_status() -> int:
+    """Show daemon state + candidate pool snapshot."""
+    import subprocess
+    installed = PLIST_PATH.exists()
+    running = False
+    if installed:
+        r = subprocess.run(["launchctl", "list", PLIST_LABEL], capture_output=True, text=True)
+        running = r.returncode == 0
+    stats = candidate_pool.pool_stats()
+    age = stats["last_fetched_min_ago"]
+    age_str = f"{age} min ago" if age >= 0 else "never"
+    state_str = "RUNNING" if running else ("INSTALLED but stopped" if installed else "NOT INSTALLED")
+    print(f"bg-status: daemon={state_str}")
+    print(f"  Pool: {stats['available']} available / {stats['total']} total")
+    print(f"  Last fetch: {age_str}")
+    return 0
+
+
 # --- status ---
 
 def cmd_status() -> int:
@@ -452,10 +636,15 @@ def main() -> int:
         "publish": lambda: cmd_publish(),
         "status": lambda: cmd_status(),
         "setup": lambda: cmd_setup(),
+        "scan-bg": lambda: cmd_scan_bg(),
+        "run-bg": lambda: cmd_run_bg(),
+        "stop-bg": lambda: cmd_stop_bg(),
+        "bg-status": lambda: cmd_bg_status(),
     }
     if cmd not in table:
         print(f"Unknown command: {cmd}")
-        print("Usage: x_engage [fetch|review|approve|redraft|kill|good|publish|status|setup]")
+        print("Usage: x_engage [fetch|review|approve|redraft|kill|good|publish|"
+              "status|setup|run-bg|stop-bg|bg-status|scan-bg]")
         return 1
     return table[cmd]()
 

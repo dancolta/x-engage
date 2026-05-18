@@ -1,6 +1,6 @@
 ---
 name: x-engage
-description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-engage", "x-engage", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status".
+description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-engage", "x-engage", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status", "background scan", "run x in background", "stop x daemon", "x background status".
 allowed-tools: Bash
 ---
 
@@ -22,6 +22,9 @@ Map user phrasings to subcommands:
 - `"save #5 as a good one"` or `"mark 5 good"` → `good 5`
 - `"ship it"` or `"publish approved"` → `publish`
 - `"x status"` or `"how many replies left today"` → `status`
+- `"start background scan"` or `"run x in background"` → `run-bg`
+- `"stop background scan"` → `stop-bg`
+- `"background status"` or `"is the daemon running"` → `bg-status`
 
 ## Args
 
@@ -36,6 +39,10 @@ Parse the first word of the user's input as the subcommand:
 - `publish` → ship every draft with status=approved via Playwright
 - `status` → counts, today's published, daily-cap usage, cooldown view, paused state
 - `setup` → first-time install: verify xurl auth, verify Notion, verify claude CLI, log into X via Playwright
+- `run-bg` → install + load a launchd plist so a background daemon scans for fresh candidates every 10 min. When you next run `fetch`, it pulls from the pre-filled pool instead of firing bird live — 15 drafts in ~3 min, no rate-limit wait.
+- `stop-bg` → unload the daemon. Existing pool stays so any pending `fetch` can still use it.
+- `bg-status` → show daemon state (running / stopped / not installed) + pool size + when it last refreshed.
+- `scan-bg` → internal one-shot scan used by the daemon. Not for manual invocation; if you want a manual refill, just run `fetch`.
 
 ## Execution
 
@@ -52,6 +59,9 @@ For each subcommand, run the matching script via Bash:
 | `publish` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage publish` |
 | `status` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage status` |
 | `setup` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage setup` |
+| `run-bg` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage run-bg` |
+| `stop-bg` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage stop-bg` |
+| `bg-status` | `cd "$X_ENGAGE_DIR" && python3 -m scripts.x_engage bg-status` |
 
 Stream output to the user. Use long timeout (600000ms) for `fetch` and `publish`.
 
