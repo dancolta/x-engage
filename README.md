@@ -18,6 +18,12 @@ The philosophy: replies are only worth sending if you actually mean them. This i
 - **What it does:** Surfaces 5–15 high-signal X posts worth replying to right now, drafts a reply in your voice for each, and waits for you to approve or kill it before anything leaves your machine.
 - **What makes it different:** Every reply is human-approved. There is no "autonomous mode" and the code refuses to add one. It's a curation tool that respects your judgment, not a reply bot that fakes you.
 
+## See the difference
+
+![before/after reply comparison](assets/before-after.gif)
+
+Three rounds of side-by-side: what a generic reply bot would draft vs what x-engage drafts. Lowercase starts, specifics, ask-back questions — versus emojis, "Great insight!", "100%!". The contrast is the whole point.
+
 ## x-engage vs alternatives
 
 | | x-engage | ReplyGuyApp / Replier | Manual scrolling |
