@@ -251,7 +251,7 @@ The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the hi
 |---|---|---|
 | `daily_cap` | 15 | Code refuses values > 25 |
 | `min_gap_between_publishes_sec` | 90 | Code floor: 30 |
-| `voice_match_threshold` | 0.65 | Drafts below this never reach review |
+| `voice_match_threshold` | 0.45 | Drafts below this never reach review |
 | `tz` | `UTC` | Target audience TZ, for daily-cap reset |
 | `posting_windows` | Tue–Thu 8–11am + 3pm | Research-backed peaks |
 | `require_explicit_approval` | `true` | Code refuses to flip this false |
@@ -297,7 +297,7 @@ The following are **hardcoded ceilings** in `references/guardrails.md` and `scri
 - 12h minimum per-handle cooldown
 - 90 min maximum source-post age
 - 280 char hard max (X limit)
-- 50 char hard min (drafts also rejected below 80 by overlay)
+- 60 char hard min (safety lint rejects shorter drafts as fragments)
 
 Kill switches:
 

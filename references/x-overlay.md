@@ -9,7 +9,7 @@ X engagement data shows a **bimodal** distribution. Avoid the no-man's-land in t
 - **Punch band: 80–110 characters** — peak engagement zone (per <100-char +17% engagement data). Use for T1, T3, T7.
 - **Earned-long band: 190–240 characters** — secondary peak for thoughtful adds. Use for T2, T4, T5, T6.
 - **Dead zone: 140–180 characters** — too long for the punch, too short for the earned-long. Drafter rewrites to either band.
-- **Hard floor: 80.** Hard ceiling: 240 (we leave headroom under X's 280 — long replies > 240 read as overcooked).
+- **Hard floor: 60** (enforced by safety lint — drafts under 60 chars get auto-rejected as fragments). Drafter target floor is **80** (aim for the punch band's lower edge by default). Hard ceiling: 240 (we leave headroom under X's 280 — long replies > 240 read as overcooked).
 
 ## Goal routing
 
@@ -165,7 +165,7 @@ Mobile collapses replies after ~60-80 chars — first 3-5 words decide profile-c
 
 ## Quality scoring threshold
 
-Before reaching the queue, drafts must score ≥ `voice_match_threshold` (default 0.65) on the internal voice-match check. Sub-threshold drafts get marked `status=rejected` automatically and never shown in `review`.
+Before reaching the queue, drafts must score ≥ `voice_match_threshold` (default 0.45) on the internal voice-match check. Sub-threshold drafts get marked `status=rejected` automatically and never shown in `review`.
 
 ## Daily cap (hardcoded, not config-overridable for volume up)
 
