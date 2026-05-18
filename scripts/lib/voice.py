@@ -175,12 +175,17 @@ def score_draft(draft: str) -> float:
 
     score = 0.0
 
-    # Length sweet spot 120–200 = full points, edges get less
+    # Length scoring matches the bimodal bands in x-overlay.md:
+    #   Punch band (60–110)       → full points (T1, T3, T7 — concise wins)
+    #   Earned-long (190–240)     → full points (T2, T4, T5, T6 — depth wins)
+    #   In-between / edge bands   → partial points
     L = len(text)
-    if 120 <= L <= 200:
+    if 60 <= L <= 110 or 190 <= L <= 240:
         score += 0.25
-    elif 80 <= L < 120 or 200 < L <= 240:
+    elif 110 < L < 140 or 170 < L < 190:
         score += 0.18
+    elif 140 <= L <= 170:
+        score += 0.10  # dead-zone — still allowed, just lower priority
     elif 240 < L <= 280:
         score += 0.10
 

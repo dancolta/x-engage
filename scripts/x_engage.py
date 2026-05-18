@@ -46,7 +46,7 @@ def _settings_or_panic() -> dict:
         s.get("min_gap_between_publishes_sec", 90), 90,
         lower=config.PANIC["min_gap_sec_floor"], upper=3600,
     )
-    s["voice_match_threshold"] = float(s.get("voice_match_threshold", 0.65))
+    s["voice_match_threshold"] = float(s.get("voice_match_threshold", 0.45))
     s["handle_cooldown_hours"] = config.safe_int(
         s.get("handle_cooldown_hours", 24), 24,
         lower=config.PANIC["handle_cooldown_hours_floor"], upper=168,
@@ -105,9 +105,30 @@ def cmd_fetch() -> int:
             followers=followers,
             age_min=age_min,
         )
+        # SKIP retry: drafter sometimes plays it too safe and emits SKIP on
+        # posts that DO warrant a reply. Re-ask once with an explicit nudge
+        # before giving up. Single retry caps cost (~one extra Claude CLI call).
         if draft.strip().upper() == "SKIP" or not draft.strip():
-            skipped += 1
-            continue
+            retry_hint = (
+                "The previous attempt returned SKIP. Look again — is there ANY "
+                "reasonable, specific reply you can write here? Even a short "
+                "punchy question or a single observation counts if it adds "
+                "something concrete. Only SKIP if the post is genuinely "
+                "unreplyable (pure spam, jobs board, foreign language, "
+                "lifestyle/personal content where a reply would be intrusive)."
+            )
+            draft = voice.draft_reply(
+                source_text=source_text,
+                author=author,
+                followers=followers,
+                age_min=age_min,
+                feedback=retry_hint,
+            )
+            if draft.strip().upper() == "SKIP" or not draft.strip():
+                log.info("draft_skip_after_retry", tweet_id=item.item_id, author=author)
+                skipped += 1
+                continue
+            log.info("draft_recovered_after_retry", tweet_id=item.item_id)
 
         passes, reason = safety.lint_draft(
             draft, source_author=author, recent_openers=recent_openers,

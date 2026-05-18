@@ -23,7 +23,7 @@ posting_windows:
 tz: UTC                        # adjust to your audience's main TZ (e.g. America/New_York, Europe/London)
 
 # Quality threshold (drafts below this get auto-rejected, not shown in review)
-voice_match_threshold: 0.65    # 0.0–1.0
+voice_match_threshold: 0.45    # 0.0–1.0
 
 # Drafter model
 drafter:

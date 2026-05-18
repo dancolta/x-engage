@@ -93,8 +93,11 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str]) -> 
         return False, "skip token"
 
     # --- length ---
-    if len(text) < 80:
-        return False, f"too short ({len(text)} < 80)"
+    # Floor 60: X replies in builder/ops circles often hit 50-70 chars and still
+    # land sharp ("What was the baseline?" = 26 chars and works). Hard floor at
+    # 60 keeps out genuine fragments without rejecting concise punch replies.
+    if len(text) < 60:
+        return False, f"too short ({len(text)} < 60)"
     if len(text) > 280:
         return False, f"too long ({len(text)} > 280)"
 

@@ -30,6 +30,19 @@ Every reply must do ONE of:
 
 Replies that don't do one of these → SKIP.
 
+## When to actually SKIP vs. attempt a reply
+
+Default to **attempting a reply**. Only SKIP when the post is genuinely unreplyable:
+
+- Pure spam, drop-shipping ad, crypto-shilling, NSFW
+- Jobs board / hiring post with no substance to engage with
+- Personal life / lifestyle content (birthdays, family photos, grief) — a reply would be intrusive
+- Foreign-language post you can't engage in English
+- Pure RT / quote-with-no-original-thought
+- Post is just a screenshot/image with no readable text and no caption
+
+For everything else: **find an angle, even a short one.** If no T1-T7 template fits cleanly, write a direct, human-shaped reply that still hits the Frame rule (value-add, thoughtful question, or specific counter). A sharp 60-90 character punch beats SKIP every time. SKIP only when you'd genuinely embarrass yourself by replying.
+
 ## Tone — constructive only
 
 The Jan 2026 Grok-based ranker actively **suppresses combative/snark replies regardless of engagement**. Banned moves on X (these still work on LinkedIn but get throttled on X):
