@@ -35,10 +35,11 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "state" / "x-engage.sqlite"
 
 # Drop rows older than this. Aligns with max_age_minutes (default 90) plus
-# a small grace window so candidates from earlier scans persist long enough
-# to actually be drafted. 2h ceiling = daemon has 12 scan cycles to refresh
-# any given candidate; past 2h the post is effectively dead for reply slots.
-MAX_POOL_AGE_SEC = 2 * 60 * 60  # 2 hours
+# a generous grace window so candidates from earlier scans persist long enough
+# to actually be drafted across multiple sessions. 4h ceiling = daemon has 24
+# scan cycles to refresh any given candidate; the reply-window check at draft
+# time (list_fresh max_age_min=90) still prevents drafting on stale posts.
+MAX_POOL_AGE_SEC = 4 * 60 * 60  # 4 hours
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candidate_pool (
