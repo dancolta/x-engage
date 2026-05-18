@@ -163,6 +163,47 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str]) -> 
     # 'aha moment', leading 'word'. Misses are OK — anti-spam, not anti-style.
     if re.search(r"(?:^|\s)'[^']{1,40}'(?=\s|[.,!?;:]|$)", text):
         return False, "straight quote-wrapped phrase banned (use bare word or paraphrase)"
+
+    # Questions must end with '?'. The drop-final-period rule applies to
+    # STATEMENTS only; questions still need their question mark to land.
+    # We check both the opener AND any mid-draft clause that starts with a
+    # wh-word — drafts like "GoHighLevel is $97/month, how did that end up
+    # on the list" are questions even though they don't start with one.
+    WH_OPENERS = {
+        "what", "what's", "whats",
+        "how", "how's", "hows",
+        "why",
+        "when",
+        "where",
+        "who", "who's", "whos",
+        "which",
+        "whose",
+        "whom",
+    }
+    AUX_OPENERS = {
+        "is", "are", "was", "were",
+        "do", "does", "did",
+        "can", "could", "will", "would", "should",
+        "have", "has", "had",
+        "am",
+    }
+    needs_qmark = False
+    trigger_word = ""
+    # 1. Check opener
+    first_word = (text.split() or [""])[0].lower().strip(",.;:")
+    if first_word in WH_OPENERS or first_word in AUX_OPENERS:
+        needs_qmark = True
+        trigger_word = first_word
+    # 2. Check post-comma clauses for wh-word starts (catches "X, how did Y" shape)
+    if not needs_qmark:
+        for clause in re.split(r",\s+", text):
+            cw = (clause.split() or [""])[0].lower().strip(",.;:")
+            if cw in WH_OPENERS:
+                needs_qmark = True
+                trigger_word = cw
+                break
+    if needs_qmark and not text.rstrip().endswith("?"):
+        return False, f"question shape ({trigger_word!r}) must end with '?'"
     if URL_RE.search(text):
         return False, "contains URL"
     extra_handles = [h.strip().lstrip("@").lower() for h in HANDLE_RE.findall(text)]
