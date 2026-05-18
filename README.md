@@ -27,7 +27,8 @@ If your account is a critical business asset and you're not okay with any increm
 
 **Is:**
 - A signal filter. Pulls only from `accounts.yml` (handles you curated) + `topics.yml` (keywords you defined) — not a firehose
-- A follower-band filter. Default 10K–80K: skips accounts where your reply is noise in a thousand-comment thread, and skips micro accounts where the thread has no audience
+- A follower-band filter. Default 2K–25K (sweet spot 6K–15K, per 3-agent algo + competitive + framing research): skips mega accounts where your reply is buried in a thousand-comment thread, and skips micro accounts where the thread has no audience
+- A post-age filter. Default 5–35 min reply window: catches the early-velocity slot where replies get 3–5x more visibility than late slots, before the Phoenix ranker stops feeding the parent post
 - A drafting assistant. Generates a reply you can approve, redraft with one line of feedback, or kill
 - Fully human-gated. Every reply requires your explicit `approve` then `publish`. No autonomous mode exists and the code won't let you enable one
 - Volume-constrained by design. 15 replies/day default, 25 hard ceiling — enforced in code, not config
@@ -60,7 +61,7 @@ Build subqueries from accounts.yml (from:@handle) + topics.yml (keywords)
        Cross-subquery dedup + sort by local_rank_score
                        │
                        ▼
-       Age window (5–60 min) + cooldown + seen-posts + follower bounds
+       Age window (5–35 min) + cooldown + seen-posts + follower bounds (2K–25K)
                        │
                        ▼
        voice-profile.personal.md + x-overlay.md + Claude CLI → draft reply
@@ -82,7 +83,7 @@ Your `accounts.yml` and `topics.yml` define the input universe. The pipeline que
 
 From there it's entirely yours: `fetch` builds the queue, `review` surfaces it in chat, `approve` or `kill` each draft, `redraft <id> "<feedback>"` if the draft is close but not right, `good <id>` to save a draft as a vibe reference for future runs, `publish` to ship what you approved. That's the whole loop.
 
-The discovery pipeline (`bird_x → normalize → signals → dedupe → snippet`) is vendored verbatim from the [`last30days`](https://github.com/YOUR-USER/last30days) skill into `scripts/lib/vendor/l30d/`, so candidate quality and ranking match what `/last30days` produces for X. Bird uses your browser session cookies (`AUTH_TOKEN` + `CT0` from `.env`) and runs as a Node subprocess — same auth model as your Playwright posting setup, zero API cost.
+The discovery pipeline (`bird_x → normalize → signals → dedupe → snippet`) is vendored verbatim from the [`last30days`](https://github.com/dancolta/last30days) skill into `scripts/lib/vendor/l30d/`, so candidate quality and ranking match what `/last30days` produces for X. Bird uses your browser session cookies (`AUTH_TOKEN` + `CT0` from `.env`) and runs as a Node subprocess — same auth model as your Playwright posting setup, zero API cost.
 
 The reply-drafting voice is defined in `voice-profile.personal.md` (gitignored — copy `voice-profile.example.md` to it and edit). `references/x-overlay.md` layers X-specific constraints on top — character minimums, opener rotation, banned spam triggers, constructive-tone requirement (the Jan 2026 Grok ranker actively suppresses combative replies regardless of engagement).
 
@@ -100,7 +101,7 @@ The reply-drafting voice is defined in `voice-profile.personal.md` (gitignored �
 ### 2. Install
 
 ```bash
-git clone https://github.com/YOUR-USER/x-engage.git
+git clone https://github.com/dancolta/x-engage.git
 cd x-engage
 pip install -r requirements.txt
 playwright install chromium
@@ -199,6 +200,9 @@ The skill installs as `/x-engage` in Claude Code. From the CLI directly:
 | `python3 -m scripts.x_engage good <id>` | Save a draft as a vibe reference for future drafting |
 | `python3 -m scripts.x_engage publish` | Ship approved drafts via Playwright |
 | `python3 -m scripts.x_engage status` | Counts, daily cap, paused state |
+| `python3 -m scripts.x_engage run-bg` | Install + start the background daemon (10-min scan interval, opt-in) |
+| `python3 -m scripts.x_engage stop-bg` | Stop the daemon (pool stays usable) |
+| `python3 -m scripts.x_engage bg-status` | Daemon state + candidate pool size + last fetch age |
 
 Typical day:
 
@@ -231,17 +235,22 @@ $ /x-engage publish
 publish: published=2, failed=0, deferred=0
 ```
 
-## Scheduling (optional)
+## Background daemon (recommended)
 
-If you want the **draft phase** to fire automatically on a schedule (publish is always manual):
+Without the daemon, every `/x-engage fetch` fires 33 bird subqueries live — easy to hit X's 150 req/15 min cookie rate limit. With the daemon, those subqueries run **in the background every 10 min** via macOS launchd, surface candidates into a SQLite pool, and your interactive `/x-engage fetch` just reads from the pool and drafts. 15 drafts in ~3 min instead of 1-2 hours.
 
 ```bash
-cp assets/com.example.xengage.fetch.plist ~/Library/LaunchAgents/
-# edit the plist: replace path placeholders with your absolute paths
-launchctl load ~/Library/LaunchAgents/com.example.xengage.fetch.plist
+/x-engage run-bg      # install + load launchd plist, daemon starts firing every 10 min
+/x-engage bg-status   # check it's running, see pool size + last-fetch age
+/x-engage fetch       # reads from pool when warm; falls back to live fetch when empty
+/x-engage stop-bg     # unload the daemon (existing pool stays usable)
 ```
 
-The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the highest-engagement windows on X per Buffer + Sprout data). Drafts accumulate in your queue. Publishing remains 100% manual.
+How the split works:
+- **Daemon (`scan-bg` subcommand)** — Discovery only. Hits bird/Lists, runs filter chain, writes survivors to `candidate_pool` SQLite table. Auto-evicts rows older than 1 hour. Never touches Notion. Never drafts.
+- **Interactive `/x-engage fetch`** — Drafting only when pool is warm. Reads top-scored candidates from the pool, calls Claude CLI drafter, applies safety lint + voice score, inserts passing drafts into the `drafts` queue, mirrors to Notion. Falls back to live discovery when pool is empty (zero behavior change vs. without the daemon).
+
+Daemon is **opt-in**. Default = off. Runs at OS level via launchd, costs ~3 sec CPU per cycle, dead silent. Unaffected by Claude sessions opening/closing.
 
 ## Configuration reference
 
@@ -252,10 +261,23 @@ The plist fires the drafter Tue–Thu at 8:30, 10:00, and 15:15 (matching the hi
 | `daily_cap` | 15 | Code refuses values > 25 |
 | `min_gap_between_publishes_sec` | 90 | Code floor: 30 |
 | `voice_match_threshold` | 0.45 | Drafts below this never reach review |
+| `min_age_minutes` / `max_age_minutes` | 5 / 35 | Reply window. 5–35 min targets the early-velocity slot per Phoenix-ranker data |
+| `max_subqueries_per_run` | 35 | Hard ceiling on bird calls per fetch (safety net against config drift) |
+| `account_or_batch_size` | 9 | OR-batch tracked-account `from:@h1 OR from:@h2 ...` subqueries (X allows ~10 per query) |
+| `fetch_cache_ttl_sec` | 300 | Back-to-back fetches within this window reuse the same bird pool — eliminates repeat subqueries |
+| `planner.enabled` | `false` | LLM topic-query expansion. Off by default (your manual queries in `topics.yml` are tighter than what the planner produces) |
 | `tz` | `UTC` | Target audience TZ, for daily-cap reset |
 | `posting_windows` | Tue–Thu 8–11am + 3pm | Research-backed peaks |
 | `require_explicit_approval` | `true` | Code refuses to flip this false |
 | `banned_terms` | `[]` | Terms that auto-reject any draft containing them (your custom blocklist — competitor names, ex-employer names, etc.) |
+
+### `config/topics.yml` — per-topic filters
+
+| Key | Recommended | Notes |
+|---|---|---|
+| `min_followers` | 2000 | Excludes the smallest accounts that have no algorithmic distribution |
+| `max_followers` | 25000 | Mega-account threads bury your reply; 25K is the Goldilocks ceiling per Vassallo doctrine + Phoenix data |
+| `min_engagement_rate` | 0.005 | Below 0.5%, the parent post isn't getting out-of-network distribution — your reply caps at OP's followers |
 
 ### `voice-profile.personal.md` and `references/x-overlay.md`
 
@@ -324,6 +346,17 @@ Recovery (whichever path triggered it):
 
 Note: bird gracefully falls back to guest tokens when cookies are technically present but invalid. Search still works (with lower rate limits), so silent expiry won't break the tool — it'll just lose any session-specific advantages.
 
+## Profile-click framing (2026 algo)
+
+Phoenix ranker (X, Jan 2026) weights **profile clicks 12x a like** and uses them as the proxy for "did this reply make someone curious about the replier." Four framing levers in `references/x-overlay.md` constrain reply SHAPE within your existing voice to maximize profile-click-per-impression:
+
+1. **Concrete unit in first 7 words** (T1/T2/T4/T4b/T6 openers must contain $, %, time, count, or ratio). Numbers force "who has this data?" curiosity.
+2. **First-person RESOLUTION not problem** for T4/T4b/T6 (`fixed it by cutting the middle step` ✓ vs `had the same problem tbh` ✗). Implies a solved-it artifact lives on the profile.
+3. **Insider-framed T3 questions only** (`d1 or d7?` ✓ vs `what's the baseline?` ✗). Triggers the 75–150x OP-reply-back multiplier.
+4. **Callback Q close on process/cost/metric topics** instead of trailing ellipsis. Assumption-of-data earns the click.
+
+These are SHAPE rules. Voice (lowercase starts, inline `tbh`/`honestly` fillers, comma splices on purpose, dropped final period on statements, `?` on questions, no quotes, no em-dashes) stays untouched — that's defined in `voice-profile.personal.md`.
+
 ## Anti-hallucination guarantees
 
 - The drafter prompt receives **only** the source post text + voice files. No web fetch, no external context. The drafter cannot invent stats, quotes, or handles because it has nothing to invent from.
@@ -340,6 +373,9 @@ scripts/
     ├── config.py           # .env + YAML loader, panic ceilings, SSL bootstrap
     ├── log.py              # JSON line logger
     ├── fetch.py            # Discovery pipeline (bird → normalize → signals → dedupe)
+    ├── fetch_cache.py      # 5-min pool cache + rate-limit cooldown marker
+    ├── candidate_pool.py   # SQLite table the background daemon writes to (read by interactive fetch)
+    ├── bird_health.py      # Bird auth + rate-limit classifier (401/403 vs 429)
     ├── voice.py            # Claude CLI drafter + heuristic scorer
     ├── safety.py           # Deterministic lint (banned shapes)
     ├── state.py            # SQLite: drafts, cooldowns, seen, openers
