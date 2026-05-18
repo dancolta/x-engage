@@ -15,6 +15,7 @@ Set `X_ENGAGE_DIR` in your environment (or this skill's caller config) to the ab
 Map user phrasings to subcommands:
 
 - `"/x-engage"` or `"draft some x replies"` or `"scan x"` → `fetch`
+- `"draft 30 replies"` or `"fetch 25"` → `fetch 30` / `fetch 25` (count arg)
 - `"show me the x queue"` or `"review x drafts"` → `review`
 - `"approve 1, 3, 5"` or `"approve all"` → `approve 1,3,5` / `approve all`
 - `"redraft 2 shorter, drop the question"` → `redraft 2: shorter, drop the question`
@@ -30,14 +31,14 @@ Map user phrasings to subcommands:
 
 Parse the first word of the user's input as the subcommand:
 
-- `fetch` (or no arg) → fetch candidates + score + draft + store in SQLite + mirror to Notion
+- `fetch [N]` → fetch candidates + score + draft + store in SQLite + mirror to Notion. Optional count arg: `fetch 30` drafts up to 30, default 15. No daily cap.
 - `review` → show pending drafts inline in chat for the user to act on
 - `approve <ids|all>` → mark drafts approved (e.g. `approve 1, 3, 5` or `approve all`)
 - `redraft <id>: <feedback>` → re-run drafter for one row with the user's steer (e.g. `redraft 2: shorter, drop the question`)
 - `kill <id>` → reject and remove from queue
 - `good <id>` → promote a draft to `good-drafts.md` as a vibe reference for future drafting (the drafter injects random examples; a 4-gram overlap lint prevents copy-paste outputs)
 - `publish` → ship every draft with status=approved via Playwright
-- `status` → counts, today's published, daily-cap usage, cooldown view, paused state
+- `status` → counts, today's published count, cooldown view, paused state
 - `setup` → first-time install: verify xurl auth, verify Notion, verify claude CLI, log into X via Playwright
 - `run-bg` → install + load a launchd plist so a background daemon scans for fresh candidates every 10 min. When you next run `fetch`, it pulls from the pre-filled pool instead of firing bird live — 15 drafts in ~3 min, no rate-limit wait.
 - `stop-bg` → unload the daemon. Existing pool stays so any pending `fetch` can still use it.
@@ -88,7 +89,7 @@ Reply with: approve <ids|all>, redraft <id>: <feedback>, kill <id>, good <id>, o
 - `review`: show drafts as above; do not summarize. Always include the Notion DB link at the end (CLI prints it automatically).
 - `approve / redraft / kill / good`: confirm action in 1 line ("Approved #1, #3", "Redrafting #2…", "Killed #4", "Saved #5 as vibe reference")
 - `publish`: published / failed / deferred counts. Surface any safety signals
-- `status`: phase, today's count vs cap, paused state, queue counts
+- `status`: phase, today's published count, paused state, queue counts
 
 ## References
 
@@ -128,6 +129,6 @@ Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup]
   kill <id>      — reject a draft
   good <id>      — save a draft as a vibe reference for future drafting
   publish        — ship approved drafts via Playwright
-  status         — counts, daily cap, paused state
+  status         — counts, published_today, paused state
   setup          — first-time setup
 ```

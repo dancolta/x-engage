@@ -31,7 +31,7 @@ If your account is a critical business asset and you're not okay with any increm
 - A post-age filter. Default 5–35 min reply window: catches the early-velocity slot where replies get 3–5x more visibility than late slots, before the Phoenix ranker stops feeding the parent post
 - A drafting assistant. Generates a reply you can approve, redraft with one line of feedback, or kill
 - Fully human-gated. Every reply requires your explicit `approve` then `publish`. No autonomous mode exists and the code won't let you enable one
-- Volume-constrained by design. 15 replies/day default, 25 hard ceiling — enforced in code, not config
+- Volume self-policed. No daily cap on drafts or publishes — you decide via the optional count arg (`/x-engage fetch 30`) and explicit approval. Per-handle 24h cooldown + 4/30d lifetime cap + 90-120s publish gap stay as the safety belt
 
 **Isn't:**
 - A mass-reply bot or follower-growth hack
@@ -258,10 +258,10 @@ Daemon is **opt-in**. Default = off. Runs at OS level via launchd, costs ~3 sec 
 
 | Key | Default | Notes |
 |---|---|---|
-| `daily_cap` | 15 | Code refuses values > 25 |
+| `daily_cap` | — | DEPRECATED. No longer enforced — pass count to fetch: `fetch 30`. Per-handle cooldown + lifetime cap remain |
 | `min_gap_between_publishes_sec` | 90 | Code floor: 30 |
 | `voice_match_threshold` | 0.45 | Drafts below this never reach review |
-| `min_age_minutes` / `max_age_minutes` | 5 / 35 | Reply window. 5–35 min targets the early-velocity slot per Phoenix-ranker data |
+| `min_age_minutes` / `max_age_minutes` | 5 / 90 | Reply window. 5–90 min covers the peak slot (5–35) plus the 30-50%-visibility decay zone (35–90), giving the daemon enough depth to accumulate 30+ candidates per hour |
 | `max_subqueries_per_run` | 35 | Hard ceiling on bird calls per fetch (safety net against config drift) |
 | `account_or_batch_size` | 9 | OR-batch tracked-account `from:@h1 OR from:@h2 ...` subqueries (X allows ~10 per query) |
 | `fetch_cache_ttl_sec` | 300 | Back-to-back fetches within this window reuse the same bird pool — eliminates repeat subqueries |

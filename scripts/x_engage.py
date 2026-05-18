@@ -88,26 +88,33 @@ def _settings_or_panic() -> dict:
 
 # --- fetch ---
 
-def cmd_fetch() -> int:
+def cmd_fetch(args: list[str] | None = None) -> int:
+    """Draft replies for candidates in the pool (or live-fetched).
+
+    Optional count arg: `/x-engage fetch 30` drafts up to 30 in this run.
+    Default: 15. No daily cap enforcement — fetch builds the queue at
+    whatever depth you ask for; publish is where account-safety lives.
+    """
     _check_halted()
     settings = _settings_or_panic()
     threshold = settings["voice_match_threshold"]
 
-    counts = state.queue_counts()
-    pending = counts.get("pending", 0)
-    daily_cap = settings["daily_cap"]
-    published_today = state.count_published_today()
-    capacity = daily_cap - published_today - pending
-    if capacity <= 0:
-        print(f"fetch: daily capacity full (cap={daily_cap}, published_today={published_today}, pending={pending}). Skipping.")
-        return 0
+    # Optional count arg — how many drafts to produce in this run.
+    # No daily cap; user-controlled per invocation.
+    requested = 15
+    if args:
+        try:
+            requested = max(1, min(50, int(args[0])))
+        except (ValueError, TypeError):
+            pass
+    capacity = requested
 
-    log.info("fetch_start", capacity=capacity)
+    log.info("fetch_start", requested=requested)
 
     # PATH 1: try the candidate pool first. If the background daemon
     # (`run-bg`) is running, the pool has fresh items ready and we skip
     # bird entirely. Drafting becomes 2-3 min instead of 5+.
-    max_age = config.safe_int(settings.get("max_age_minutes", 35), 35, 5, 1440)
+    max_age = config.safe_int(settings.get("max_age_minutes", 90), 90, 5, 1440)
     pool_rows = candidate_pool.list_fresh(limit=capacity * 3, max_age_min=max_age)
     if pool_rows:
         candidates = _pool_rows_to_items(pool_rows)
@@ -401,10 +408,10 @@ def cmd_publish() -> int:
         print("publish: nothing approved. Use `/x-engage review` then `approve <ids|all>`.")
         return 0
 
-    cap_remaining = settings["daily_cap"] - state.count_published_today()
-    if cap_remaining <= 0:
-        print(f"publish: daily cap hit ({settings['daily_cap']}). Try again tomorrow.")
-        return 0
+    # No daily cap enforcement — user has explicitly opted out
+    # ("everything on my responsibility"). The 90-120s publish gap +
+    # per-handle 24h cooldown + 4/30d lifetime cap stay as the safety
+    # belt; volume is the user's call.
 
     # Refuse to publish if `require_explicit_approval` is somehow false (defense in depth)
     if not settings.get("require_explicit_approval", True):
@@ -418,10 +425,9 @@ def cmd_publish() -> int:
         print(f"publish: Playwright not available — install with `pip install playwright && playwright install chromium`. ({e})")
         return 1
 
-    to_publish = approved[:cap_remaining]
-    deferred = len(approved) - len(to_publish)
+    to_publish = approved  # ship all approved; no cap
     result = publish_batch(to_publish, settings)
-    print(f"publish: published={result['published']}, failed={result['failed']}, deferred={deferred}")
+    print(f"publish: published={result['published']}, failed={result['failed']}, total_approved={len(approved)}")
     if result.get("safety_signal"):
         print(f"ACCOUNT_PAUSED: {result['safety_signal']}")
         return 2
@@ -590,7 +596,8 @@ def cmd_status() -> int:
     published_today = state.count_published_today()
     paused = (Path.home() / ".x-engage" / "PAUSED").exists()
     halt = config.env("X_ENGAGE_HALT", "0") == "1"
-    print(f"status: published_today={published_today}/{settings['daily_cap']}, "
+    # No daily cap — show today's published count as info only
+    print(f"status: published_today={published_today} (no cap), "
           f"queue={counts}, paused={paused}, halt_env={halt}")
     return 0
 
@@ -650,7 +657,7 @@ def main() -> int:
         return cmd_fetch()
     cmd, rest = args[0], args[1:]
     table = {
-        "fetch": lambda: cmd_fetch(),
+        "fetch": lambda: cmd_fetch(rest),
         "review": lambda: cmd_review(),
         "approve": lambda: cmd_approve(rest),
         "redraft": lambda: cmd_redraft(rest),

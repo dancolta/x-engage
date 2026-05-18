@@ -38,7 +38,7 @@ topics:
 # Global rules applied to all topic searches:
 rules:
   language: en                 # English only (matches voice-profile.md)
-  max_age_minutes: 35
+  max_age_minutes: 90
   min_age_minutes: 5
   skip_replies: true
   skip_retweets: true

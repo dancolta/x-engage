@@ -29,7 +29,7 @@ accounts:
 
 # Global rules applied to all tracked accounts:
 rules:
-  max_age_minutes: 60          # ignore posts older than this (default from x-overlay.md)
+  max_age_minutes: 90          # ignore posts older than this (default from x-overlay.md)
   min_age_minutes: 5           # ignore posts younger than this (avoid mid-edit posts)
   skip_replies: true           # ignore tracked-account posts that are themselves replies
   skip_retweets: true

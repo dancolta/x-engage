@@ -34,9 +34,11 @@ from typing import Any, Iterator
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "state" / "x-engage.sqlite"
 
-# Drop rows older than this. Aligns with max_age_minutes (default 35) plus
-# a small grace window so we don't churn rows we're about to use.
-MAX_POOL_AGE_SEC = 60 * 60  # 1 hour absolute ceiling
+# Drop rows older than this. Aligns with max_age_minutes (default 90) plus
+# a small grace window so candidates from earlier scans persist long enough
+# to actually be drafted. 2h ceiling = daemon has 12 scan cycles to refresh
+# any given candidate; past 2h the post is effectively dead for reply slots.
+MAX_POOL_AGE_SEC = 2 * 60 * 60  # 2 hours
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candidate_pool (
@@ -95,16 +97,19 @@ def upsert(*, item_id: str, author: str, source_text: str, source_url: str,
         return cur.rowcount > 0 and not cur.lastrowid == 0
 
 
-def list_fresh(limit: int = 30, max_age_min: int = 35) -> list[dict[str, Any]]:
+def list_fresh(limit: int = 30, max_age_min: int = 90) -> list[dict[str, Any]]:
     """Return up to `limit` undrafted candidates whose post age is still inside
-    the reply window. Sorted by relevance_score DESC.
+    the reply window. Sorted by NEWEST FIRST (posted_at DESC), then by
+    relevance_score DESC as tiebreak — so /x-engage fetch always drafts the
+    most recent candidates first, and subsequent fetches naturally move to
+    older items as the newer ones get marked drafted=1.
     """
     cutoff_posted_at = int(time.time()) - max_age_min * 60
     with _conn() as c:
         rows = c.execute(
             """SELECT * FROM candidate_pool
                WHERE drafted = 0 AND posted_at >= ?
-               ORDER BY relevance_score DESC, posted_at DESC
+               ORDER BY posted_at DESC, relevance_score DESC
                LIMIT ?""",
             (cutoff_posted_at, limit),
         ).fetchall()
