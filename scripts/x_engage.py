@@ -604,8 +604,233 @@ def cmd_status() -> int:
 
 # --- setup ---
 
-def cmd_setup() -> int:
-    """Lightweight setup check: bird auth, Notion creds, claude CLI, profile dir."""
+def cmd_setup(args: list[str] | None = None) -> int:
+    """Interactive setup wizard. Walks you through every config step,
+    asks questions, and writes files for you.
+
+    Run `setup --check` for a non-interactive verification (the old behavior).
+    """
+    if args and args[0] in ("--check", "-c", "check"):
+        return _cmd_setup_check()
+    return _cmd_setup_wizard()
+
+
+def _prompt(question: str, default: str | None = None, secret: bool = False) -> str:
+    """Ask the user a question; return stripped answer (or default if empty)."""
+    suffix = f" [{default}]" if default else ""
+    while True:
+        try:
+            if secret:
+                import getpass
+                ans = getpass.getpass(f"{question}{suffix}: ").strip()
+            else:
+                ans = input(f"{question}{suffix}: ").strip()
+        except EOFError:
+            ans = ""
+        if ans:
+            return ans
+        if default is not None:
+            return default
+
+
+def _prompt_yes_no(question: str, default: bool = True) -> bool:
+    suffix = " [Y/n]" if default else " [y/N]"
+    while True:
+        try:
+            ans = input(f"{question}{suffix}: ").strip().lower()
+        except EOFError:
+            ans = ""
+        if not ans:
+            return default
+        if ans in ("y", "yes"):
+            return True
+        if ans in ("n", "no"):
+            return False
+        print("  (please answer y or n)")
+
+
+def _write_env_value(key: str, value: str) -> None:
+    """Upsert KEY=VALUE in .env at project root."""
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text().splitlines()
+    found = False
+    new_lines: list[str] = []
+    for line in lines:
+        if line.startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(new_lines) + "\n")
+
+
+def _cmd_setup_wizard() -> int:
+    """Interactive walkthrough — installs everything a non-tech user needs."""
+    import shutil
+    print()
+    print("┌─────────────────────────────────────────────────────────┐")
+    print("│            x-engage interactive setup wizard            │")
+    print("│  Walks you through every step. Press Enter to accept    │")
+    print("│  defaults shown in brackets. Ctrl+C to bail anytime.    │")
+    print("└─────────────────────────────────────────────────────────┘")
+    print()
+
+    # ─── Step 1: prereq tooling ───
+    print("Step 1/6 — Checking required tools on your system…")
+    missing = []
+    for tool, hint in [
+        ("node", "Install Node.js 22+ from https://nodejs.org"),
+        ("python3", "Python 3.10+ should already be on macOS — try `xcode-select --install`"),
+        (config.env("CLAUDE_CLI", "claude"), "Install Claude Code from https://claude.ai/code"),
+    ]:
+        if shutil.which(tool):
+            print(f"  ✓ {tool} found")
+        else:
+            print(f"  ✗ {tool} NOT found. {hint}")
+            missing.append(tool)
+    if missing:
+        print(f"\nInstall the missing tools above, then re-run `/x-engage setup`.")
+        return 1
+    print()
+
+    # ─── Step 2: copy example configs if missing ───
+    print("Step 2/6 — Setting up config files…")
+    root = Path(__file__).resolve().parents[1]
+    for src, dst in [
+        ("config/accounts.example.yml", "config/accounts.yml"),
+        ("config/topics.example.yml", "config/topics.yml"),
+        ("config/settings.example.yml", "config/settings.yml"),
+        ("voice-profile.example.md", "voice-profile.personal.md"),
+        ("good-drafts.example.md", "good-drafts.md"),
+    ]:
+        s, d = root / src, root / dst
+        if d.exists():
+            print(f"  ✓ {dst} already exists, keeping it")
+        elif s.exists():
+            d.write_text(s.read_text())
+            print(f"  ✓ Created {dst} from example")
+        else:
+            print(f"  ⚠ {src} missing in repo — skip")
+    print()
+
+    # ─── Step 3: X session cookies ───
+    print("Step 3/6 — X (Twitter) session cookies")
+    print("  These let x-engage read your X feed (no password, no API key).")
+    print("  How to grab them:")
+    print("    1. Open x.com in Chrome, logged in")
+    print("    2. Cmd+Opt+I to open DevTools")
+    print("    3. Application tab → Cookies → https://x.com")
+    print("    4. Find `auth_token` (~40 chars) and `ct0` (~160 chars)")
+    print("    5. Copy the VALUE column for each")
+    print()
+    existing_auth = config.env("AUTH_TOKEN")
+    existing_ct0 = config.env("CT0")
+    if existing_auth and existing_ct0:
+        print(f"  ✓ Found existing AUTH_TOKEN ({existing_auth[:8]}…) and CT0 in .env")
+        if not _prompt_yes_no("  Replace them with new values?", default=False):
+            print("  → Keeping existing cookies")
+        else:
+            auth = _prompt("  Paste AUTH_TOKEN", secret=True)
+            ct0 = _prompt("  Paste CT0", secret=True)
+            _write_env_value("AUTH_TOKEN", auth)
+            _write_env_value("CT0", ct0)
+            print("  ✓ Updated .env")
+    else:
+        auth = _prompt("  Paste AUTH_TOKEN", secret=True)
+        ct0 = _prompt("  Paste CT0", secret=True)
+        _write_env_value("AUTH_TOKEN", auth)
+        _write_env_value("CT0", ct0)
+        print("  ✓ Saved to .env")
+    print()
+
+    # ─── Step 4: Notion (optional) ───
+    print("Step 4/6 — Notion mirror (optional)")
+    print("  If you skip this, drafts only live in local SQLite + chat.")
+    print("  Notion gives you a searchable, shareable log.")
+    if _prompt_yes_no("  Set up Notion now?", default=False):
+        print("  How:")
+        print("    1. Visit https://www.notion.so/profile/integrations")
+        print("    2. Create a new integration, copy the secret (starts with `ntn_…`)")
+        print("    3. Create a Notion DB with these columns: Name (title), status (select),")
+        print("       author, draft, post_text, post_url, scanned_at (date), published_at (date)")
+        print("    4. Share the DB with your integration (DB top-right → Connections)")
+        print("    5. Copy the DB ID from the URL (the 32-char hex string)")
+        token = _prompt("  Paste Notion integration token", secret=True)
+        db_id = _prompt("  Paste Notion DB ID (32 hex chars)")
+        _write_env_value("NOTION_TOKEN", token)
+        _write_env_value("NOTION_DB_ID", db_id)
+        print("  ✓ Saved to .env")
+    else:
+        print("  → Skipped (mirror_enabled defaults to true; the code falls back gracefully)")
+    print()
+
+    # ─── Step 5: Playwright login ───
+    print("Step 5/6 — One-time X login in the publish browser profile")
+    print("  Playwright will open Chrome, you log into X manually,")
+    print("  then close the window. Login persists for future publishes.")
+    if _prompt_yes_no("  Do this now?", default=True):
+        import subprocess
+        profile = Path.home() / ".x-engage" / "chrome-profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        print("  → Launching Chrome — log into X, then close the window")
+        script = (
+            "from playwright.sync_api import sync_playwright; "
+            "from pathlib import Path; "
+            f"p='{profile}'; "
+            "import sys; "
+            "exec(compile('''\n"
+            "with sync_playwright() as pw:\n"
+            "    ctx = pw.chromium.launch_persistent_context(p, headless=False, viewport={'width':1280,'height':800})\n"
+            "    page = ctx.new_page()\n"
+            "    page.goto('https://x.com/login')\n"
+            "    input('Logged in? Press Enter here to close the browser...')\n"
+            "    ctx.close()\n"
+            "''', '<wizard>', 'exec'))"
+        )
+        try:
+            subprocess.run(["python3", "-c", script], check=False)
+            print("  ✓ Playwright login session captured")
+        except Exception as e:
+            print(f"  ⚠ Playwright launch failed: {e}")
+            print("    Run manually later: see README 'Detailed setup' section")
+    else:
+        print("  → Skipped (publish won't work until you do this — see README)")
+    print()
+
+    # ─── Step 6: optional background daemon ───
+    print("Step 6/6 — Background daemon (optional but recommended)")
+    print("  Scans X every 10 min for candidates so `/x-engage fetch`")
+    print("  is instant when you run it. Costs ~3 sec CPU per cycle.")
+    if _prompt_yes_no("  Install + start the daemon now?", default=True):
+        cmd_run_bg()
+    else:
+        print("  → Skipped. Enable later with `/x-engage run-bg`")
+    print()
+
+    # ─── Final verification ───
+    print("Running final verification…")
+    print()
+    check_ok = _cmd_setup_check()
+    print()
+    if check_ok == 0:
+        print("┌─────────────────────────────────────────────────────────┐")
+        print("│  Setup complete! Next steps:                            │")
+        print("│                                                          │")
+        print("│  1. Edit voice-profile.personal.md to define your voice │")
+        print("│  2. Edit config/accounts.yml to add handles you track   │")
+        print("│  3. Edit config/topics.yml to add keywords you care     │")
+        print("│     about (or keep the defaults to start)               │")
+        print("│  4. Run `/x-engage fetch` to draft your first replies   │")
+        print("└─────────────────────────────────────────────────────────┘")
+    return check_ok
+
+
+def _cmd_setup_check() -> int:
+    """Lightweight setup verification (the old `cmd_setup` behavior)."""
     from scripts.lib import bird_health
     ok = True
     # Verify Node is available for the vendored bird-search subprocess
@@ -665,7 +890,7 @@ def main() -> int:
         "good": lambda: cmd_good(rest),
         "publish": lambda: cmd_publish(),
         "status": lambda: cmd_status(),
-        "setup": lambda: cmd_setup(),
+        "setup": lambda: cmd_setup(rest),
         "scan-bg": lambda: cmd_scan_bg(),
         "run-bg": lambda: cmd_run_bg(),
         "stop-bg": lambda: cmd_stop_bg(),
