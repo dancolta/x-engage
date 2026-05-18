@@ -1,6 +1,8 @@
-# x-engage
+<p align="center">
+  <img src="assets/cover.gif" alt="x-engage — tweet → filter → reply in your voice" width="900">
+</p>
 
-![x-engage cover](assets/cover.gif)
+# x-engage
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
