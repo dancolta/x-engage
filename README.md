@@ -1,10 +1,12 @@
 # x-engage
 
-> A qualification pipeline for X: surfaces posts worth replying to from accounts you already track, drafts a starting point in your voice, and waits for your explicit approval before anything ships.
+x-engage cuts out the 30–60 minutes you'd otherwise spend scrolling X to find a post worth replying to. It watches a list of accounts and keywords you define, scores each post against simple criteria (recency, follower band, engagement velocity), drafts a reply in your voice, and stops. You read it, edit it or kill it, then hit publish. That's the whole loop.
 
-`x-engage` is a [Claude Code](https://claude.ai/code) skill. It filters a curated list of tracked accounts + topic keywords down to the small subset of posts where a thoughtful reply is actually worth your time, scores each candidate, drafts in your voice, and queues them for chat review. Nothing publishes until you run `approve` and then `publish`.
+The philosophy: replies are only worth sending if you actually mean them. This tool is a curation layer, not an output multiplier. It doesn't help you reply more — it helps you spend less time deciding where to reply at all.
 
-It is built for builders who reply on X deliberately — not to farm followers, but because the right reply to the right person at the right moment is a real signal that compounds.
+It's not in the same category as ReplyGuyApp, Replier, or any other tool that fires replies at scale on your behalf. Those tools treat your account as a broadcast channel. This one treats your account as yours. Every reply is read and approved by you before it leaves your machine.
+
+The background daemon (opt-in, runs every 10 minutes) only builds the candidate queue. Drafting and publishing are both explicit actions you take in chat. There is no mode where the tool acts without you.
 
 ![demo](assets/demo.gif)
 
