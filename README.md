@@ -1,13 +1,15 @@
 <p align="center">
-  <img src="assets/cover.gif" alt="x-engage — tweet → filter → reply in your voice" width="900">
+  <img src="assets/cover.gif" alt="x-engage — signal · lock · reply in your voice" width="900">
 </p>
 
-# x-engage
+<h1 align="center">x-engage</h1>
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-![Claude Code](https://img.shields.io/badge/Claude_Code-skill-orange.svg)
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey.svg">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue.svg">
+  <img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-skill-orange.svg">
+</p>
 
 **X (Twitter) replies that drive profile clicks, not just likes.** Built around the 2026 X ranker mechanic where replies are weighted up to **12× a like** as a profile-curiosity signal — so reply *shape* matters more than reply volume.
 
