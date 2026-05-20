@@ -48,6 +48,41 @@ def _pool_rows_to_items(rows: list[dict]) -> list:
     return items
 
 
+_ENGLISH_STOPWORDS = (
+    " the ", " and ", " is ", " in ", " to ", " of ", " for ", " on ",
+    " a ", " i ", " you ", " it ", " this ", " that ", " with ", " but ",
+    " so ", " or ", " my ", " your ", " we ", " they ", " what ", " how ",
+)
+
+
+def _is_english(text: str) -> bool:
+    """Cheap heuristic for X-post-length text. Two-gate check:
+
+    1. ASCII-letter ratio ≥85% (filters CJK, Cyrillic, Arabic, most Romance
+       languages with heavy accent density).
+    2. At least one common English stopword present.
+
+    False-negatives on heavily-typo'd English are acceptable — autopilot
+    will simply skip that candidate. False-positives are rare because the
+    tracked topics already use English keywords (`#buildinpublic`, etc.).
+    Designed for the autopilot/fetch candidate filter — runs once per
+    candidate before drafter spend.
+    """
+    import re
+    if not text or len(text) < 20:
+        return False
+    # Strip URLs / mentions / hashtags / digits — they shouldn't influence the call
+    cleaned = re.sub(r"https?://\S+|@\w+|#\w+|\d+", " ", text).strip()
+    if not cleaned:
+        return False
+    letters = sum(1 for c in cleaned if c.isalpha())
+    ascii_letters = sum(1 for c in cleaned if c.isascii() and c.isalpha())
+    if letters == 0 or (ascii_letters / letters) < 0.85:
+        return False
+    padded = f" {cleaned.lower()} "
+    return any(w in padded for w in _ENGLISH_STOPWORDS)
+
+
 def _author(item) -> str:
     return (item.author or "").lstrip("@").strip()
 
@@ -155,6 +190,12 @@ def cmd_fetch(args: list[str] | None = None) -> int:
         source_text = item.body or item.title or ""
 
         if state.lifetime_replies_to(author.lower(), within_days=30) >= 4:
+            skipped += 1
+            continue
+
+        # English-only filter — drafter only does English voice.
+        if not _is_english(source_text):
+            log.info("fetch_skip_non_english", tweet_id=item.item_id, author=author)
             skipped += 1
             continue
 
@@ -1048,6 +1089,11 @@ def cmd_autopilot_tick() -> int:
 
         if state.lifetime_replies_to(author.lower(), within_days=30) >= 4:
             log.info("autopilot_skip_lifetime_cap", author=author)
+            continue
+
+        # English-only filter — drafter only does English voice.
+        if not _is_english(source_text):
+            log.info("autopilot_skip_non_english", tweet_id=item.item_id, author=author)
             continue
 
         draft = voice.draft_reply(
