@@ -43,6 +43,28 @@ planner:
   model: claude-sonnet-4-6
   depth: default               # quick | default | deep — more = more subqueries per topic
 
+# --- Autopilot (autonomous fire-and-forget daemon) ---
+# When `/x-engage autopilot start` runs, a launchd plist fires `autopilot-tick`
+# every `tick_interval_sec`. Each tick: scan pool → draft ONE reply → lint+score
+# → auto-approve → publish via Playwright. Bypasses `require_explicit_approval`
+# ONLY on the autopilot code path; manual `/x-engage publish` is unaffected.
+#
+# READ THE AUTOPILOT DISCLAIMER IN README.md BEFORE ENABLING THIS.
+# Recommended floor before turning autopilot on: 100+ manually-approved
+# replies, calibrated voice profile, validated lint/score thresholds.
+#
+# All fields below are OPTIONAL and COMMENTED OUT BY DESIGN. Leave them off
+# and pass values via CLI every time: `autopilot start target=N until=HH:MM`.
+# Or uncomment + set the ones you want as defaults. Hard ceiling on
+# daily_target is 50 (code-enforced).
+#
+# autopilot:
+#   daily_target: 25               # max published replies per day (1–50). Start low.
+#   stop_at: "18:00"               # auto-stop at this LOCAL time (uses tz: above)
+#   candidate_max_age_min: 30      # only reply to posts this fresh (5–240). Lower = higher algo boost, fewer eligible
+#   tick_interval_sec: 60          # launchd StartInterval (min 30)
+#   min_gap_between_publishes_sec: 90  # safety belt between consecutive publishes
+
 # --- Bird subquery budget ---
 # Hard ceiling on bird calls per fetch run. Beyond this they're dropped with a
 # WARN log. Safety net against config drift (e.g. adding a 20th topic).

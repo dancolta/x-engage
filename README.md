@@ -177,7 +177,7 @@ Without the daemon, every `/x-engage fetch` fires ~33 search subqueries live —
 
 ```bash
 /x-engage run-bg      # install + load launchd plist
-/x-engage bg-status   # check it's running
+/x-engage status      # unified status — includes scan-bg state + pool size
 /x-engage stop-bg     # unload (existing pool stays usable)
 ```
 
@@ -189,6 +189,56 @@ How the split works:
 Daemon is opt-in. Default = off. Runs at OS level via launchd, costs ~3 sec CPU per cycle.
 
 ![daemon scanning demo](assets/daemon-scan.gif)
+
+---
+
+## Autopilot mode (autonomous publish, opt-in)
+
+> **READ FIRST:** the [Autopilot disclaimer](#autopilot-disclaimer) at the top of this file. Do not enable until you have 100+ manually-approved replies and a calibrated voice profile. If you skip the calibration and your account gets suspended, that is on you.
+
+Autopilot fuses scan → draft → lint → publish into a single loop that runs without per-draft approval. It is a separate code path from manual mode; manual `/x-engage publish` still requires explicit chat approval.
+
+```bash
+/x-engage autopilot start                            # uses defaults from settings.yml (or CLI)
+/x-engage autopilot start target=25 until=18:00      # pass values inline
+/x-engage autopilot start --keep-awake               # also run caffeinate to prevent lid-close sleep
+/x-engage autopilot stop                             # unload daemon + kill caffeinate
+/x-engage autopilot list                             # today's published replies (audit)
+/x-engage status                                     # unified — includes autopilot heartbeat + sleep-block
+```
+
+**What it does each tick (every 60s):**
+
+1. Halt checks — `~/.x-engage/PAUSED` flag, daily target hit, `stop_at` reached
+2. Pull 1 fresh candidate from the pool (`candidate_max_age_min` window)
+3. Draft via the same drafter as manual mode
+4. Lint + score — same threshold as manual (`voice_match_threshold`, default 0.45)
+5. Insert as approved, publish via Playwright
+6. On safety signal — write PAUSED, self-unload daemon, exit
+
+**What it does NOT bypass:**
+- 90s min gap between publishes
+- Per-handle 24h cooldown
+- 4 replies / 30d lifetime cap per author
+- Voice-match threshold
+- Safety lint
+- CAPTCHA / ACCOUNT_PAUSED / RESTRICTION halt
+
+**Resilience contract:**
+
+| Failure | Behavior |
+|---|---|
+| Process crash | launchd auto-restarts (`KeepAlive` + `ThrottleInterval=30`) |
+| Machine reboot | Plist auto-loads on next login via `~/Library/LaunchAgents/` |
+| Network blip | Tick logs error, next tick retries in 60s |
+| System sleep / lid close | launchd PAUSES — use `--keep-awake` to prevent idle-sleep |
+| X cookie expiry | Writes PAUSED, self-unloads — refresh cookies, delete PAUSED, restart |
+| X safety signal | Writes PAUSED, screenshot saved, self-unloads |
+| New day | Yesterday's daemon self-stopped at `stop_at`. Re-run `autopilot start` manually (intentional gate) |
+
+**Verify it's actually alive (not just installed):** `/x-engage status` shows `heartbeat: Xs ago [ALIVE|STALE|DEAD]`. ALIVE = ticking. STALE (>120s) = check `logs/autopilot.err`. DEAD (>600s) = daemon is wedged.
+
+**Configuration:** see the commented `autopilot:` block in `config/settings.example.yml` — all fields are off by default. Set them in your `config/settings.yml`, or pass via CLI each time. The code clamps `daily_target` to a hard ceiling of 50.
 
 ---
 
