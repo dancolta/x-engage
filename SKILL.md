@@ -1,6 +1,6 @@
 ---
 name: x-engage
-description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Triggers on "/x-engage", "x-engage", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status", "background scan", "run x in background", "stop x daemon", "x background status", "verify x-engage", "x-engage health".
+description: Drafts X (Twitter) replies in your voice and queues them for in-chat approval before publishing. Also includes autopilot mode (autonomous scan+draft+publish daemon, no approval, 50/day target, auto-stops at configurable time). Triggers on "/x-engage", "x-engage", "x comment", "reply on x", "draft x replies", "scan x for replies", "review x drafts", "approve x drafts", "publish x replies", "x reply status", "background scan", "run x in background", "stop x daemon", "x background status", "verify x-engage", "x-engage health", "autopilot", "x autopilot", "start autopilot", "stop autopilot", "autopilot status", "run x autonomously".
 allowed-tools: Bash
 ---
 
@@ -40,6 +40,10 @@ Map user phrasings to subcommands:
 - `"stop background scan"` → `stop-bg`
 - `"background status"` or `"is the daemon running"` → `bg-status`
 - `"verify x-engage"` or `"is the skill healthy"` or `"check for bloat"` → `verify`
+- `"start autopilot"` or `"run x autonomously"` or `"autopilot start"` → `autopilot start`
+- `"stop autopilot"` or `"kill autopilot"` → `autopilot stop`
+- `"autopilot status"` or `"how is autopilot doing"` → `autopilot status`
+- `"start autopilot target=30 until=17:00"` → `autopilot start target=30 until=17:00`
 
 ## Subcommands
 
@@ -60,6 +64,9 @@ Parse the first word of the user's input as the subcommand, then run the matchin
 | `stop-bg` | Unload the daemon. Existing pool stays so any pending `fetch` can still use it. | `… stop-bg` |
 | `bg-status` | Show daemon state (running / stopped / not installed) + pool size + last refresh time. | `… bg-status` |
 | `verify` | One-shot skill health check: line counts, lint pattern totals, stale file detection, SKILL.md staleness vs code. Exit 1 if warnings. | `… verify` |
+| `autopilot start [target=N] [until=HH:MM]` | Install + load `com.x-engage.autopilot` launchd plist. Daemon ticks every 60s: scan → draft 1 → lint+score → auto-approve → publish via Playwright. **Bypasses manual approval.** Stops on target hit, time reached, or safety signal. Defaults: target=50, until=18:00. Also warns if scan-bg daemon isn't running. | `… autopilot start [target=N] [until=HH:MM]` |
+| `autopilot stop` | Unload autopilot plist. Pool + queue stay. | `… autopilot stop` |
+| `autopilot status` | Daemon state + today's published count vs target + stop time + paused flag. | `… autopilot status` |
 
 Stream output to the user. Use long timeout (600000ms) for `fetch` and `publish`.
 
@@ -119,6 +126,36 @@ The references that the drafter actually reads at runtime:
 - `references/guardrails.md` — human-readable rate-limit doc (operational caps, cooldown reasoning). The executable rules are in `scripts/lib/safety.py` + `state.py`.
 
 Anti-bloat: `references/_archive/` holds legacy files from the pre-rebuild architecture (T1-T7 templates etc.). Not loaded. Don't restore.
+
+## Autopilot mode
+
+`/x-engage autopilot start` boots an autonomous loop that drafts AND publishes replies without per-draft approval. Designed for fire-and-forget engagement velocity.
+
+**How it works:**
+- launchd plist `com.x-engage.autopilot` fires `autopilot-tick` every 60s
+- Each tick: check halt conditions → pull 1 fresh candidate from pool → draft → lint+score (same bar as manual: ≥0.45) → insert as approved → publish via Playwright
+- Tick is idempotent — safe to crash and resume
+- **Requires `scan-bg` daemon running in parallel** to keep the pool fresh. Autopilot warns if it's not. Start it with `/x-engage run-bg`.
+
+**Stop conditions (any triggers self-unload):**
+1. Daily target hit (default 50, panic ceiling 50)
+2. `stop_at` time reached (default 18:00 local, uses `tz` from `settings.yml`)
+3. `~/.x-engage/PAUSED` flag exists (any safety signal writes this)
+4. `X_ENGAGE_HALT=1` env var
+
+**What it does NOT bypass:**
+- 90s min gap between publishes
+- Per-handle 24h cooldown
+- 4 replies / 30d lifetime cap per author
+- Voice-match threshold (0.45)
+- Safety lint
+- CAPTCHA / ACCOUNT_PAUSED / RESTRICTION → writes PAUSED, auto-unloads daemon, exit 2
+
+**Args:**
+- `target=N` — override daily target (1 ≤ N ≤ 50). Panic ceiling refuses higher.
+- `until=HH:MM` — override stop time (local TZ from settings.yml).
+
+Manual `/x-engage publish` is unaffected — it still requires `require_explicit_approval=true`.
 
 ## Critical: safety + auth signals
 

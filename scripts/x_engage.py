@@ -601,6 +601,384 @@ def cmd_bg_status() -> int:
     return 0
 
 
+# --- autopilot ---
+#
+# Autonomous mode: scan pool → draft ONE → lint+score → auto-approve → publish.
+# One launchd plist (com.x-engage.autopilot) fires `autopilot-tick` every
+# tick_interval_sec. Self-stops on: daily_target hit, stop_at time reached,
+# PAUSED flag set, X safety signal. Scan-bg daemon must run in parallel to
+# keep the pool fresh.
+
+AUTOPILOT_LABEL = "com.x-engage.autopilot"
+AUTOPILOT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{AUTOPILOT_LABEL}.plist"
+AUTOPILOT_CONFIG = Path.home() / ".x-engage" / "autopilot.json"
+
+
+def _tz_offset_seconds(tz_name: str) -> int:
+    """UTC offset (seconds) for the given IANA tz at *now*. DST-aware."""
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        off = datetime.now(ZoneInfo(tz_name)).utcoffset()
+        return int(off.total_seconds()) if off else 0
+    except Exception:
+        return 0
+
+
+def _autopilot_now_local(tz_name: str):
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        return datetime.now()
+
+
+def _parse_hhmm(s: str) -> tuple[int, int]:
+    parts = s.strip().split(":")
+    return int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+
+
+def _load_autopilot_runtime() -> dict:
+    import json
+    if not AUTOPILOT_CONFIG.exists():
+        return {}
+    try:
+        return json.loads(AUTOPILOT_CONFIG.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_autopilot_runtime(cfg: dict) -> None:
+    import json
+    AUTOPILOT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    AUTOPILOT_CONFIG.write_text(json.dumps(cfg, indent=2))
+
+
+def cmd_autopilot(args: list[str]) -> int:
+    """Dispatcher for `autopilot {start|stop|status}` (plus hidden `autopilot-tick`)."""
+    if not args:
+        print("autopilot: usage `/x-engage autopilot {start|stop|status} [target=N] [until=HH:MM]`")
+        return 1
+    sub, rest = args[0], args[1:]
+    if sub == "start":
+        return cmd_autopilot_start(rest)
+    if sub == "stop":
+        return cmd_autopilot_stop()
+    if sub == "status":
+        return cmd_autopilot_status()
+    print(f"autopilot: unknown subcommand '{sub}'. Use start | stop | status.")
+    return 1
+
+
+def cmd_autopilot_start(args: list[str]) -> int:
+    """Install + load launchd plist for autopilot ticks.
+
+    Args: `target=N` (default 50), `until=HH:MM` (default 18:00).
+    """
+    settings = _settings_or_panic()
+    ap_settings = settings.get("autopilot") or {}
+    target_default = int(ap_settings.get("daily_target", 50))
+    until_default = str(ap_settings.get("stop_at", "18:00"))
+    tick_interval = config.safe_int(
+        ap_settings.get("tick_interval_sec", 60), 60,
+        lower=config.PANIC["min_gap_sec_floor"], upper=600,
+    )
+
+    target = target_default
+    until = until_default
+    for a in args:
+        if a.startswith("target="):
+            try:
+                target = int(a.split("=", 1)[1])
+            except ValueError:
+                pass
+        elif a.startswith("until="):
+            until = a.split("=", 1)[1].strip()
+
+    panic_max = config.PANIC["autopilot_daily_cap_max"]
+    target = config.safe_int(target, target_default, lower=1, upper=panic_max)
+    try:
+        _parse_hhmm(until)
+    except (ValueError, IndexError):
+        print(f"autopilot start: invalid until='{until}', expected HH:MM")
+        return 1
+
+    if config.is_halted():
+        print("autopilot start: REFUSING — kill switch engaged (~/.x-engage/PAUSED or X_ENGAGE_HALT=1)")
+        print("  Resolve the safety signal, delete the PAUSED file, then retry.")
+        return 2
+
+    _save_autopilot_runtime({
+        "target": target,
+        "until": until,
+        "started_at": state.now(),
+    })
+
+    import shutil, os, subprocess
+    project_root = Path(__file__).resolve().parents[1]
+    python = shutil.which("python3") or "/usr/bin/python3"
+    node = shutil.which("node") or ""
+    path_parts: list[str] = []
+    if node:
+        path_parts.append(str(Path(node).parent))
+    if python:
+        path_parts.append(str(Path(python).parent))
+    path_parts.extend(["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"])
+    seen: set[str] = set()
+    deduped = [p for p in path_parts if not (p in seen or seen.add(p))]
+    daemon_path = ":".join(deduped)
+
+    plist_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{AUTOPILOT_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{python}</string>
+    <string>-m</string>
+    <string>scripts.x_engage</string>
+    <string>autopilot-tick</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{project_root}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{daemon_path}</string>
+    <key>HOME</key>
+    <string>{os.path.expanduser('~')}</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>{tick_interval}</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>{project_root}/logs/autopilot.out</string>
+  <key>StandardErrorPath</key>
+  <string>{project_root}/logs/autopilot.err</string>
+</dict>
+</plist>
+"""
+    AUTOPILOT_PLIST.parent.mkdir(parents=True, exist_ok=True)
+    AUTOPILOT_PLIST.write_text(plist_xml)
+    (project_root / "logs").mkdir(exist_ok=True)
+
+    subprocess.run(["launchctl", "unload", str(AUTOPILOT_PLIST)], capture_output=True)
+    r = subprocess.run(["launchctl", "load", str(AUTOPILOT_PLIST)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"autopilot start: launchctl load failed — {r.stderr.strip()}")
+        return 1
+
+    # Make sure scan-bg is also running so the pool stays full.
+    scan_bg_running = subprocess.run(
+        ["launchctl", "list", PLIST_LABEL], capture_output=True, text=True,
+    ).returncode == 0
+    if not scan_bg_running:
+        print("autopilot start: WARN — scan-bg daemon not running. Autopilot needs a fresh pool.")
+        print("  Start it with: /x-engage run-bg")
+
+    print(f"autopilot: STARTED — target={target} replies, stops at {until} local ({settings.get('tz', 'UTC')})")
+    print(f"  Tick interval: {tick_interval}s. Logs: {project_root}/logs/autopilot.{{out,err}}")
+    print(f"  Stop with: /x-engage autopilot stop")
+    return 0
+
+
+def cmd_autopilot_stop() -> int:
+    """Unload the autopilot plist. Pool + drafts stay."""
+    import subprocess
+    if not AUTOPILOT_PLIST.exists():
+        print("autopilot stop: not installed (no plist found)")
+        return 0
+    subprocess.run(["launchctl", "unload", str(AUTOPILOT_PLIST)], capture_output=True, text=True)
+    print(f"autopilot stop: daemon unloaded (plist remains at {AUTOPILOT_PLIST})")
+    return 0
+
+
+def cmd_autopilot_status() -> int:
+    """Show daemon state + today's published count + time-to-stop."""
+    import subprocess
+    settings = _settings_or_panic()
+    tz_name = str(settings.get("tz", "UTC"))
+    runtime = _load_autopilot_runtime()
+    installed = AUTOPILOT_PLIST.exists()
+    running = False
+    if installed:
+        running = subprocess.run(
+            ["launchctl", "list", AUTOPILOT_LABEL], capture_output=True, text=True,
+        ).returncode == 0
+    tz_off = _tz_offset_seconds(tz_name)
+    published_today = state.count_published_today(tz_offset_sec=tz_off)
+    target = int(runtime.get("target", 0))
+    until = runtime.get("until", "—")
+    paused = (Path.home() / ".x-engage" / "PAUSED").exists()
+    state_str = "RUNNING" if running else ("INSTALLED but stopped" if installed else "NOT INSTALLED")
+
+    print(f"autopilot: daemon={state_str}")
+    print(f"  Published today: {published_today} / {target if target else '—'}")
+    print(f"  Stops at: {until} ({tz_name})")
+    print(f"  Paused flag: {paused}")
+    if running and target and published_today >= target:
+        print("  (Target hit — autopilot will self-stop on next tick.)")
+    return 0
+
+
+def cmd_autopilot_tick() -> int:
+    """Single iteration of the autopilot loop. Called by launchd.
+
+    Idempotent: safe to crash and resume. Exit 2 on safety signal — caller HALT.
+    """
+    import time as _time
+    # 1. Halt checks
+    if config.is_halted():
+        # Silent no-op; auto-stop the daemon so it doesn't keep firing.
+        log.info("autopilot_tick_halted_paused")
+        cmd_autopilot_stop()
+        return 0
+
+    settings = _settings_or_panic()
+    ap_settings = settings.get("autopilot") or {}
+    runtime = _load_autopilot_runtime()
+    tz_name = str(settings.get("tz", "UTC"))
+    target = config.safe_int(
+        runtime.get("target", ap_settings.get("daily_target", 50)),
+        50, lower=1, upper=config.PANIC["autopilot_daily_cap_max"],
+    )
+    until = str(runtime.get("until", ap_settings.get("stop_at", "18:00")))
+    max_age = config.safe_int(ap_settings.get("candidate_max_age_min", 30), 30, 5, 240)
+    min_gap = config.safe_int(
+        ap_settings.get("min_gap_between_publishes_sec", 90), 90,
+        lower=config.PANIC["min_gap_sec_floor"], upper=3600,
+    )
+
+    # Time-of-day stop
+    try:
+        hh, mm = _parse_hhmm(until)
+        now_local = _autopilot_now_local(tz_name)
+        if (now_local.hour, now_local.minute) >= (hh, mm):
+            log.info("autopilot_tick_time_stop", until=until)
+            print(f"autopilot-tick: reached stop time {until} — unloading daemon")
+            cmd_autopilot_stop()
+            return 0
+    except (ValueError, IndexError):
+        pass
+
+    # Daily target stop
+    tz_off = _tz_offset_seconds(tz_name)
+    published_today = state.count_published_today(tz_offset_sec=tz_off)
+    if published_today >= target:
+        log.info("autopilot_tick_target_hit", published=published_today, target=target)
+        print(f"autopilot-tick: target {target} hit ({published_today} today) — unloading daemon")
+        cmd_autopilot_stop()
+        return 0
+
+    # 2. Min-gap check
+    last_ts = state.last_published_ts()
+    if last_ts and (_time.time() - last_ts) < min_gap:
+        wait = int(min_gap - (_time.time() - last_ts))
+        log.info("autopilot_tick_min_gap_wait", seconds_left=wait)
+        return 0
+
+    # 3. Pull one fresh candidate (over-fetch a few in case top one fails filters)
+    pool_rows = candidate_pool.list_fresh(limit=5, max_age_min=max_age)
+    if not pool_rows:
+        log.info("autopilot_tick_pool_empty", max_age_min=max_age)
+        return 0
+
+    threshold = float(settings.get("voice_match_threshold", 0.45))
+    recent_openers_list = state.recent_openers(limit=5)
+    recent_drafts = state.recent_published_drafts(limit=voice.SHAPE_HISTORY_WINDOW)
+
+    # 4. Draft + lint + score loop — try candidates until one passes
+    for item in _pool_rows_to_items(pool_rows):
+        candidate_pool.mark_drafted([item.item_id])
+        state.mark_seen(item.item_id)
+        author = _author(item)
+        followers = _followers(item)
+        age_min = int(item.metadata.get("age_min") or 0)
+        source_text = item.body or item.title or ""
+
+        if state.lifetime_replies_to(author.lower(), within_days=30) >= 4:
+            log.info("autopilot_skip_lifetime_cap", author=author)
+            continue
+
+        draft = voice.draft_reply(
+            source_text=source_text,
+            author=author,
+            followers=followers,
+            age_min=age_min,
+            recent_drafts=recent_drafts,
+        )
+        if draft.strip().upper() == "SKIP" or not draft.strip():
+            log.info("autopilot_skip_drafter", tweet_id=item.item_id, author=author)
+            continue
+
+        passes, reason = safety.lint_draft(
+            draft, source_author=author, recent_openers=recent_openers_list,
+            recent_drafts=recent_drafts,
+        )
+        if not passes:
+            log.info("autopilot_draft_rejected", reason=reason, tweet_id=item.item_id)
+            continue
+
+        score = voice.score_draft(draft)
+        if score < threshold:
+            log.info("autopilot_draft_below_threshold", score=score, threshold=threshold)
+            continue
+
+        # 5. Insert as approved and publish via existing batch path (single-row)
+        draft_id = state.insert_draft(
+            source_id=item.item_id,
+            source_url=item.url or "",
+            source_author=author,
+            source_text=source_text,
+            source_followers=followers,
+            source_age_min=age_min,
+            draft=draft,
+            score=score,
+        )
+        page_id = notion_mirror.push_draft(state.get_draft(draft_id) or {})
+        state.set_draft_status(
+            draft_id, "approved",
+            approved_at=state.now(),
+            notion_page_id=page_id,
+        )
+        if page_id:
+            notion_mirror.update_status(page_id, "approved")
+        state.record_opener(safety.extract_opener(draft))
+
+        # publish_batch enforces its own entry safety scan + writes PAUSED on signal.
+        # Single-row batch: no intra-batch gap triggers (i>0 path skipped).
+        try:
+            from scripts.lib.publisher import publish_batch
+        except ImportError as e:
+            log.warn("autopilot_playwright_missing", err=str(e))
+            return 1
+
+        row = state.get_draft(draft_id)
+        if not row:
+            return 1
+        result = publish_batch([row], settings)
+        if result.get("safety_signal"):
+            log.warn("autopilot_halted_safety", signal=result["safety_signal"])
+            print(f"autopilot-tick: ACCOUNT_PAUSED — {result['safety_signal']}")
+            cmd_autopilot_stop()
+            return 2
+        if result["published"] >= 1:
+            log.info("autopilot_tick_published", draft_id=draft_id, score=score, author=author)
+            print(f"autopilot-tick: published draft={draft_id} score={score:.2f} @{author}")
+            return 0
+        # publish failed (non-safety) — log and try next candidate next tick
+        log.warn("autopilot_publish_failed", draft_id=draft_id)
+        return 0
+
+    log.info("autopilot_tick_no_candidate_passed")
+    return 0
+
+
 # --- status ---
 
 def cmd_status() -> int:
@@ -1088,11 +1466,13 @@ def main() -> int:
         "stop-bg": lambda: cmd_stop_bg(),
         "bg-status": lambda: cmd_bg_status(),
         "verify": lambda: cmd_verify(),
+        "autopilot": lambda: cmd_autopilot(rest),
+        "autopilot-tick": lambda: cmd_autopilot_tick(),
     }
     if cmd not in table:
         print(f"Unknown command: {cmd}")
         print("Usage: x_engage [fetch|review|approve|redraft|kill|good|publish|"
-              "status|setup|run-bg|stop-bg|bg-status|scan-bg|verify]")
+              "status|setup|run-bg|stop-bg|bg-status|scan-bg|verify|autopilot]")
         return 1
     return table[cmd]()
 

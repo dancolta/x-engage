@@ -83,6 +83,7 @@ def is_halted() -> bool:
 # Panic ceilings — hardcoded, cannot be loosened by config
 PANIC = {
     "daily_cap_max": 25,
+    "autopilot_daily_cap_max": 50,  # autopilot-only ceiling; manual fetch still capped at 25
     "min_gap_sec_floor": 30,
     "handle_cooldown_hours_floor": 12,
     "max_post_age_minutes": 360,

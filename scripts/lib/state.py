@@ -129,6 +129,15 @@ def list_approved_for_publish() -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def last_published_ts() -> int | None:
+    """Most recent published_at timestamp, or None if nothing ever published."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT MAX(published_at) AS ts FROM drafts WHERE status='published'"
+        ).fetchone()
+    return int(row["ts"]) if row and row["ts"] else None
+
+
 def count_published_today(tz_offset_sec: int = 0) -> int:
     """Count drafts published since midnight in target tz."""
     midnight = _midnight_in_tz(tz_offset_sec)
