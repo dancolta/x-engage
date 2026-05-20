@@ -48,6 +48,9 @@ Map user phrasings to subcommands:
 - `"start autopilot"` or `"run x autonomously"` or `"autopilot start"` → `autopilot start`  (auto-starts scan-bg)
 - `"stop autopilot"` or `"kill autopilot"` → `autopilot stop`
 - `"start autopilot target=30 until=17:00"` → `autopilot start target=30 until=17:00`
+- `"start autopilot don't sleep"` / `"start autopilot stay awake"` / `"start autopilot keep system on"` → `autopilot start --keep-awake`
+- `"show me today's replies"` / `"list published"` / `"what did autopilot send"` → `autopilot list`
+- `"show me the last 50 replies"` → `autopilot list 50`
 - (advanced) `"start scan-bg only"` / `"pool only no publish"` → `run-bg`
 - (advanced) `"stop scan-bg"` → `stop-bg`
 
@@ -68,7 +71,9 @@ Parse the first word of the user's input as the subcommand, then run the matchin
 | `setup` | First-time install: verify xurl auth, Notion, claude CLI, log into X via Playwright. | `… setup` |
 | `verify` | Skill health check: line counts, lint pattern totals, stale file detection, SKILL.md staleness vs code. Exit 1 if warnings. | `… verify` |
 | `autopilot start [target=N] [until=HH:MM]` | Install + load `com.x-engage.autopilot` launchd plist. Daemon ticks every 60s: scan → draft 1 → lint+score → auto-approve → publish via Playwright. **Bypasses manual approval.** **Auto-starts scan-bg** if not running. Stops on target hit, time reached, or safety signal. Defaults: target=50, until=18:00. | `… autopilot start [target=N] [until=HH:MM]` |
-| `autopilot stop` | Unload autopilot plist. Pool + queue stay. scan-bg keeps running unless you also `stop-bg`. | `… autopilot stop` |
+| `autopilot stop` | Unload autopilot plist + kill `caffeinate` if active. Pool + queue stay. scan-bg keeps running unless you also `stop-bg`. | `… autopilot stop` |
+| `autopilot list [N]` | Print today's published replies (default 20, max 200) — author, score, parent URL, source post, draft text, time. On-demand audit of what shipped. | `… autopilot list [N]` |
+| `autopilot start --keep-awake` | Same as `autopilot start` but also runs `caffeinate -i` for the day so the system won't enter idle-sleep when the lid closes. Without this flag, lid-close pauses launchd and ticks stop until wake. | `… autopilot start --keep-awake` |
 | **(advanced)** `run-bg` | Install + load scan-bg launchd plist (every 10 min, pool feeder only — no drafts, no publishes). Normally not needed since `autopilot start` auto-launches this. Use only for pool-only / manual workflow. | `… run-bg` |
 | **(advanced)** `stop-bg` | Unload scan-bg daemon. Pool stays. | `… stop-bg` |
 
@@ -161,6 +166,21 @@ Anti-bloat: `references/_archive/` holds legacy files from the pre-rebuild archi
 - `until=HH:MM` — override stop time (local TZ from settings.yml).
 
 Manual `/x-engage publish` is unaffected — it still requires `require_explicit_approval=true`.
+
+## Resilience contract (what survives what)
+
+| Failure | Behavior | Action needed |
+|---|---|---|
+| Process crash mid-tick | launchd restarts via `KeepAlive{SuccessfulExit=false}` + retries in ≥30s (`ThrottleInterval`) | None — auto-heals |
+| Machine reboot | Plist is in `~/Library/LaunchAgents/` → auto-loads on next login. `RunAtLoad=true` fires immediately. | None — log back in |
+| User-account logout | Daemon stops (LaunchAgent runs in user session). Resumes on next login. | None |
+| System sleep / lid close | **launchd PAUSES.** Ticks stop. Time spent asleep is LOST (no backfill). | Use `autopilot start --keep-awake` to run `caffeinate -i` and prevent idle-sleep for the day |
+| Network blip | Tick exception logged, next tick retries in 60s | None |
+| X cookie expiry | Writes PAUSED, self-unloads (`COOKIES_EXPIRED` halt) | Refresh cookies in `.env`, delete PAUSED, re-run `autopilot start` |
+| X safety signal | Writes PAUSED, self-unloads. Screenshot in `~/Downloads/x-incident-*.png` | Verify account healthy, delete PAUSED, re-run `autopilot start` |
+| New day | Yesterday's daemon self-stopped at `stop_at`. Today's plist isn't loaded. | Re-run `autopilot start` each morning (intentional — enforces calibration gate) |
+
+**How to verify it's actually alive (not just "installed"):** run `/x-engage status` — the `heartbeat: Xs ago [ALIVE]` line proves the tick fired recently. Anything over 120s = STALE = something's wrong; over 600s = DEAD = check `tail logs/autopilot.err`.
 
 ## Critical: safety + auth signals
 

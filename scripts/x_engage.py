@@ -618,6 +618,8 @@ def cmd_bg_status() -> int:
 AUTOPILOT_LABEL = "com.x-engage.autopilot"
 AUTOPILOT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{AUTOPILOT_LABEL}.plist"
 AUTOPILOT_CONFIG = Path.home() / ".x-engage" / "autopilot.json"
+AUTOPILOT_HEARTBEAT = Path.home() / ".x-engage" / "autopilot-heartbeat"
+CAFFEINATE_PID_FILE = Path.home() / ".x-engage" / "caffeinate.pid"
 
 
 def _tz_offset_seconds(tz_name: str) -> int:
@@ -677,7 +679,9 @@ def cmd_autopilot(args: list[str]) -> int:
     if sub == "status":
         # Backward-compat alias — defer to unified status
         return cmd_status()
-    print(f"autopilot: unknown subcommand '{sub}'. Use start | stop.")
+    if sub == "list":
+        return cmd_autopilot_list(rest)
+    print(f"autopilot: unknown subcommand '{sub}'. Use start | stop | list.")
     return 1
 
 
@@ -697,6 +701,7 @@ def cmd_autopilot_start(args: list[str]) -> int:
 
     target = target_default
     until = until_default
+    keep_awake = False
     for a in args:
         if a.startswith("target="):
             try:
@@ -705,6 +710,8 @@ def cmd_autopilot_start(args: list[str]) -> int:
                 pass
         elif a.startswith("until="):
             until = a.split("=", 1)[1].strip()
+        elif a in ("--keep-awake", "keep-awake", "--no-sleep"):
+            keep_awake = True
 
     panic_max = config.PANIC["autopilot_daily_cap_max"]
     target = config.safe_int(target, target_default, lower=1, upper=panic_max)
@@ -772,6 +779,15 @@ def cmd_autopilot_start(args: list[str]) -> int:
   <integer>{tick_interval}</integer>
   <key>RunAtLoad</key>
   <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
   <key>StandardOutPath</key>
   <string>{project_root}/logs/autopilot.out</string>
   <key>StandardErrorPath</key>
@@ -804,20 +820,119 @@ def cmd_autopilot_start(args: list[str]) -> int:
     else:
         print("autopilot start: scan-bg already running ✓")
 
+    # Optional: prevent system sleep for the rest of the day via `caffeinate`.
+    # macOS suspends LaunchAgents during sleep — caffeinate -i keeps the
+    # system awake (display can still dim/sleep, just not the system).
+    if keep_awake:
+        _start_caffeinate(until, settings.get("tz", "UTC"))
+
     print(f"autopilot: STARTED — target={target} replies, stops at {until} local ({settings.get('tz', 'UTC')})")
     print(f"  Tick interval: {tick_interval}s. Logs: {project_root}/logs/autopilot.{{out,err}}")
+    print(f"  Hardened: KeepAlive+ThrottleInterval+ProcessType=Background (auto-restarts on crash)")
+    if keep_awake:
+        print(f"  System sleep: PREVENTED via caffeinate until {until} (pid in {CAFFEINATE_PID_FILE})")
+    else:
+        print(f"  System sleep: NOT prevented. If you close the lid, ticks pause. Use --keep-awake to override.")
     print(f"  Stop with: /x-engage autopilot stop")
     return 0
 
 
+def _start_caffeinate(until: str, tz_name: str) -> None:
+    """Launch `caffeinate -i` (prevent idle sleep) until the stop time. Stores
+    pid so cmd_autopilot_stop can clean it up.
+    """
+    import subprocess, shutil
+    from datetime import datetime, timedelta
+    if not shutil.which("caffeinate"):
+        print("  WARN: caffeinate not found — install Xcode CLI tools to enable --keep-awake")
+        return
+    # Compute seconds until `until` time. If past today, schedule until same time tomorrow.
+    try:
+        hh, mm = _parse_hhmm(until)
+    except (ValueError, IndexError):
+        return
+    now = _autopilot_now_local(tz_name)
+    target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if target <= now:
+        target = target + timedelta(days=1)
+    seconds = int((target - now).total_seconds())
+    # Kill any previous caffeinate before starting a new one
+    _stop_caffeinate()
+    proc = subprocess.Popen(
+        ["caffeinate", "-i", "-t", str(seconds)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    CAFFEINATE_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CAFFEINATE_PID_FILE.write_text(str(proc.pid))
+
+
+def _stop_caffeinate() -> None:
+    """Kill the caffeinate process started by --keep-awake, if any."""
+    import os, signal
+    if not CAFFEINATE_PID_FILE.exists():
+        return
+    try:
+        pid = int(CAFFEINATE_PID_FILE.read_text().strip())
+        os.kill(pid, signal.SIGTERM)
+    except (ValueError, ProcessLookupError, PermissionError):
+        pass
+    try:
+        CAFFEINATE_PID_FILE.unlink()
+    except OSError:
+        pass
+
+
 def cmd_autopilot_stop() -> int:
-    """Unload the autopilot plist. Pool + drafts stay."""
+    """Unload the autopilot plist + kill caffeinate if active. Pool + drafts stay."""
     import subprocess
+    _stop_caffeinate()
     if not AUTOPILOT_PLIST.exists():
         print("autopilot stop: not installed (no plist found)")
         return 0
     subprocess.run(["launchctl", "unload", str(AUTOPILOT_PLIST)], capture_output=True, text=True)
     print(f"autopilot stop: daemon unloaded (plist remains at {AUTOPILOT_PLIST})")
+    return 0
+
+
+def cmd_autopilot_list(args: list[str]) -> int:
+    """Show today's published replies. Default 20, override with first arg.
+
+    Output: id · author · score · age · draft text · parent URL — one block per row.
+    """
+    n = 20
+    if args:
+        try:
+            n = max(1, min(200, int(args[0])))
+        except (ValueError, TypeError):
+            pass
+    settings = _settings_or_panic()
+    tz_off = _tz_offset_seconds(str(settings.get("tz", "UTC")))
+    # Get all published drafts since local midnight
+    import sqlite3
+    with sqlite3.connect(state.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        midnight = state._midnight_in_tz(tz_off)
+        rows = c.execute(
+            """SELECT id, source_author, source_url, source_text, draft, score,
+                      published_at, source_followers
+               FROM drafts
+               WHERE status='published' AND published_at >= ?
+               ORDER BY published_at DESC LIMIT ?""",
+            (midnight, n),
+        ).fetchall()
+    if not rows:
+        print("autopilot list: no replies published today yet")
+        return 0
+    print(f"─── {len(rows)} published reply(ies) today ───")
+    for i, r in enumerate(rows, start=1):
+        from datetime import datetime
+        ts = datetime.fromtimestamp(r["published_at"]).strftime("%H:%M")
+        src = (r["source_text"] or "").strip().replace("\n", " ")[:120]
+        print(f"\n#{i} [{ts}]  @{r['source_author']} ({r['source_followers']:,} followers)  score={r['score']:.2f}")
+        print(f"   Parent : {r['source_url']}")
+        print(f"   Source : \"{src}\"")
+        print(f"   Reply  : \"{r['draft']}\"")
     return 0
 
 
@@ -855,6 +970,13 @@ def cmd_autopilot_tick() -> int:
     Idempotent: safe to crash and resume. Exit 2 on safety signal — caller HALT.
     """
     import time as _time
+    # Heartbeat: always write first thing so status command can prove daemon is alive
+    try:
+        AUTOPILOT_HEARTBEAT.parent.mkdir(parents=True, exist_ok=True)
+        AUTOPILOT_HEARTBEAT.write_text(str(int(_time.time())))
+    except OSError:
+        pass
+
     # 1. Halt checks
     if config.is_halted():
         # Silent no-op; auto-stop the daemon so it doesn't keep firing.
@@ -1044,6 +1166,23 @@ def cmd_status() -> int:
     print(f"  Autopilot   : {'RUNNING' if ap_running else ('installed/stopped' if ap_installed else 'NOT INSTALLED')}")
     if ap_running or ap_installed:
         print(f"                target={ap_target} · stop_at={ap_until} ({tz_name})")
+        # Heartbeat — proves tick is actually firing (not just plist loaded)
+        if AUTOPILOT_HEARTBEAT.exists():
+            try:
+                import time as _t
+                hb_age = int(_t.time() - int(AUTOPILOT_HEARTBEAT.read_text().strip()))
+                hb_status = "ALIVE" if hb_age < 120 else ("STALE" if hb_age < 600 else "DEAD")
+                print(f"                heartbeat: {hb_age}s ago [{hb_status}]")
+            except (ValueError, OSError):
+                print(f"                heartbeat: unreadable")
+        else:
+            print(f"                heartbeat: never (daemon hasn't ticked yet)")
+        # Caffeinate state — is system-sleep prevention active?
+        if CAFFEINATE_PID_FILE.exists():
+            import subprocess as _sp
+            pid = CAFFEINATE_PID_FILE.read_text().strip()
+            alive = _sp.run(["kill", "-0", pid], capture_output=True).returncode == 0
+            print(f"                sleep-block: {'ACTIVE (caffeinate pid=' + pid + ')' if alive else 'stale pid file'}")
     print("─" * 50)
     return 0
 
