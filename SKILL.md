@@ -14,9 +14,9 @@ Set `X_ENGAGE_DIR` in your environment (or this skill's caller config) to the ab
 
 Drafts are produced by **corpus retrieval + minimal positive-spec prompt + post-filter lint**, not by stacking rules in the prompt. Key components:
 
-- `voice-profile.personal.md` (~80 lines) — six positive specs + confirmed Dan-voice patterns
-- `dan-x-corpus.md` — tagged Dan-voiced reply examples, top-3 retrieved by source-post keyword
-- `dan-receipts.md` — static verifiable Dan facts (GitHub stats, NodeSparks numbers), top-2 retrieved by keyword
+- `voice-profile.personal.md` (~80 lines) — six positive specs + confirmed your voice patterns
+- `voice-corpus.md` — tagged voice-matched reply examples, top-3 retrieved by source-post keyword
+- `voice-receipts.md` — static verifiable user facts (your GitHub stats, your company numbers), top-2 retrieved by keyword
 - `scripts/lib/safety.py` — deterministic post-filter lint (em-dash ban, aphorism patterns, AI-stock phrases)
 - `scripts/lib/voice.py` — drafter orchestrator + Claude CLI invocation
 - `SKILL_DISCIPLINE.md` — anti-bloat guardrails (read this before adding rules)
@@ -65,7 +65,7 @@ Parse the first word of the user's input as the subcommand, then run the matchin
 | `approve <ids\|all>` | Mark drafts approved (e.g. `approve 1, 3, 5` or `approve all`). | `… approve <ids>` |
 | `redraft <id>: <feedback>` | Re-run drafter for one row with the user's steer (e.g. `redraft 2: shorter, drop the question`). | `… redraft <id> "<feedback>"` |
 | `kill <id>` | Reject and remove from queue. | `… kill <id>` |
-| `good <id>` | Promote a draft to `good-drafts.md` as a vibe reference. Consider also adding to `dan-x-corpus.md` if it demonstrates a new pattern. | `… good <id>` |
+| `good <id>` | Promote a draft to `good-drafts.md` as a vibe reference. Consider also adding to `voice-corpus.md` if it demonstrates a new pattern. | `… good <id>` |
 | `publish` | Ship every draft with status=approved via Playwright. | `… publish` |
 | `status` | **Unified snapshot** — queue counts, today's published, scan-bg state + pool size, autopilot state + target/stop_at, paused/halt flags. Replaces the old `bg-status` and `autopilot status` (those still work as aliases). | `… status` |
 | `setup` | First-time install: verify xurl auth, Notion, claude CLI, log into X via Playwright. | `… setup` |
@@ -111,7 +111,7 @@ The protocol (full details in `SKILL_DISCIPLINE.md`):
 
 1. **Identify the failure** — which specific phrase / shape / register collision is wrong?
 2. **Add to `BANNED_ANYWHERE` (or `BANNED_OPENERS` if position-specific)** in `scripts/lib/safety.py`. Comment with date + draft ID.
-3. **Test the lint** — verify the failed draft rejects + a clean Dan-shape variant still passes.
+3. **Test the lint** — verify the failed draft rejects + a clean voice-matched variant still passes.
 4. **Kill the draft** in the live queue.
 5. **Run `/x-engage verify`** to confirm bloat is in check.
 
@@ -123,14 +123,14 @@ Do NOT:
 ## When user flags a draft as "yes, this is me"
 
 1. Run `/x-engage good <id>` — pins into `good-drafts.md`.
-2. If the draft demonstrates a NEW pattern (new register, new POV, new receipt shape), also append manually to `dan-x-corpus.md` so future retrieval picks it up.
+2. If the draft demonstrates a NEW pattern (new register, new POV, new receipt shape), also append manually to `voice-corpus.md` so future retrieval picks it up.
 
 ## References
 
 The references that the drafter actually reads at runtime:
 
-- `dan-x-corpus.md` — tagged Dan-voiced replies. Top-3 retrieved per draft.
-- `dan-receipts.md` — verifiable static facts. Top-2 retrieved per draft.
+- `voice-corpus.md` — tagged voice-matched replies. Top-3 retrieved per draft.
+- `voice-receipts.md` — verifiable static facts. Top-2 retrieved per draft.
 - `voice-profile.personal.md` — six positive specs + anti-pattern reminders.
 - `references/guardrails.md` — human-readable rate-limit doc (operational caps, cooldown reasoning). The executable rules are in `scripts/lib/safety.py` + `state.py`.
 

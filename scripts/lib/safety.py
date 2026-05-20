@@ -8,11 +8,11 @@ Operational rate-limits, daily caps, and cooldowns are documented in
 `references/guardrails.md` (human-readable) and enforced in this file +
 state.py. Keep the doc in sync when changing the constants below.
 
-What we KEEP (confirmed in Dan's real corpus):
-- em dashes, en dashes (zero in his real writing)
-- exclamation marks (zero in his replies)
+What we KEEP (confirmed in the user's real corpus):
+- em dashes, en dashes (zero in the user's real writing)
+- exclamation marks (zero in the user's replies)
 - emoji, hashtags, URLs, extra @-mentions
-- double quotes, smart quotes (he paraphrases instead)
+- double quotes, smart quotes (the user paraphrases instead)
 - promo / meta-disclosure phrases
 - aphorism punchline shapes ("X is real, Y is the move", "X is the moat")
 - length floor/ceiling
@@ -22,8 +22,8 @@ What we KEEP (confirmed in Dan's real corpus):
 
 What we DROPPED (turned out to be AI-hallucinated):
 - 3-questions-in-a-row backstop (drafter no longer steered toward questions)
-- comma-before-and/or rule (Dan's real corpus has both)
-- negation-reframe complex regex (his Post 01 has "AI isn't the problem / laziness is")
+- comma-before-and/or rule (the user's real corpus has both)
+- negation-reframe complex regex (the user's Post 01 has "AI isn't the problem / laziness is")
 - filler count > 1 cap (sometimes natural at emotional peaks)
 - OSS-anchor position/frequency cap (corpus handles this naturally)
 - listicle-wisdom patterns that weren't actual tells
@@ -39,7 +39,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GOOD_DRAFTS = ROOT / "good-drafts.md"
-DAN_CORPUS = ROOT / "dan-x-corpus.md"
+VOICE_CORPUS = ROOT / "voice-corpus.md"
 
 # Reject draft if its 4-gram overlap with any corpus example exceeds this ratio.
 CORPUS_OVERLAP_THRESHOLD = 0.30
@@ -51,18 +51,18 @@ BANNED_OPENERS = (
     "absolutely", "totally agree",
     # AI register-collision openers (the "tbh-glued-to-formal" failure mode)
     "tbh,", "honestly,", "ngl,",
-    # Generic-AI hedge words — Dan-flagged as never-his-voice
+    # Generic-AI hedge words — user-flagged as never-the-user's-voice
     "curious ", "curious,",
 )
 
 # Words/phrases banned anywhere in the draft (not just opener).
 # These are AI-stock-vocabulary that survive the existing patterns but still
-# leak slop into otherwise clean Dan-shape drafts.
+# leak slop into otherwise clean voice-matched drafts.
 #
-# GROWTH RULE: only add entries here when Dan explicitly flags a phrase as
-# "this is never my voice." Never add inferred or "this sounds AI" guesses
+# GROWTH RULE: only add entries here when the user explicitly flags a phrase
+# as "this is never my voice." Never add inferred or "this sounds AI" guesses
 # — that's how the prompt bloated to 600 lines last time. Each entry must
-# trace to a specific draft Dan rejected.
+# trace to a specific draft the user rejected.
 BANNED_ANYWHERE = (
     # Generic-AI hedge words (flagged 2026-05-20)
     "curious what", "curious how", "curious if",
@@ -77,7 +77,7 @@ BANNED_ANYWHERE = (
     "is where things ",
     # Bare-fragment closer after a period — e.g. "...3 paying ones. different math entirely."
     # (flagged 2026-05-20, draft published before lint update.)
-    # Shape Dan wants: comma + connector like "that's" before the closer.
+    # Shape the user wants: comma + connector like "that's" before the closer.
     # Pattern is PERIOD-prefixed only, so "..., that's different math entirely"
     # passes while the bare-fragment form rejects.
     ". different math",
@@ -85,28 +85,27 @@ BANNED_ANYWHERE = (
     ". different beast",
     ". different game entirely",
     ". wild stuff.",
-    # Add more here as Dan flags. Format: lowercased substring match.
+    # Add more here as the user flags. Format: lowercased substring match.
 )
 
-# Promo / self-promo phrases — auto-reject anywhere in draft.
+# Promo / self-promo phrases — auto-reject anywhere in draft. These are
+# generic patterns that apply to any user. For personal/company-specific
+# bans (your name, employer, ex-clients, project names, taboo topics),
+# add them to `banned_terms: []` in config/settings.yml. They get pulled
+# in by `_user_banned_terms()` below and treated identically to this list.
 PROMO_PHRASES = (
     "i built", "i made", "i wrote", "i created", "i shipped",
     "my tool", "my cli", "my script", "my repo", "my project",
     "check it out", "shameless plug", "dm me", "link in bio",
-    "feel free to try", "repo is", "github.com", "dancolta",
-    # Meta-disclosure bans
+    "feel free to try", "repo is", "github.com",
+    # Meta-disclosure bans — the tool referring to itself
     "x-engage", "x engage", "xengage",
     "reply generator", "reply bot", "comment generator", "comment bot",
     "auto-reply", "auto reply", "automated reply", "automated comment",
-    # AUTODOC ban (personal-brand surface only — confirmed in voice profile)
-    "autodoc", "auto-doc",
-    # NodeSparks "we"-framing ban (first-person singular only on X)
-    "we at nodesparks", "the team at nodesparks", "our team built",
-    "two of us at", "the team and i",
 )
 
 # Aphorism-punchline patterns — these survived the voice fingerprint check
-# because they're confirmed AI-tells (zero appearances in Dan's real corpus
+# because they're confirmed AI-tells (zero appearances in the user's real corpus
 # and high frequency in Sonnet/GPT outputs).
 APHORISM_PATTERNS = (
     # closing-line nouns (standalone clause)
@@ -187,7 +186,7 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str],
         if low.startswith(opener):
             return False, f"banned opener: {opener!r}"
 
-    # --- promo / meta-disclosure / NodeSparks-framing phrases ---
+    # --- promo / meta-disclosure / user banned_terms phrases ---
     for phrase in PROMO_PHRASES:
         if phrase in low:
             return False, f"promo phrase: {phrase!r}"
@@ -292,7 +291,7 @@ def lint_draft(draft: str, *, source_author: str, recent_openers: list[str],
         if opener_key == prev_key:
             return False, "opener repeats a recent reply"
 
-    # --- corpus overlap (anti-copy lint — applies to Dan corpus, not good-drafts) ---
+    # --- corpus overlap (anti-copy lint — applies to voice corpus, not good-drafts) ---
     overlap_ratio, matched = _max_corpus_overlap(text)
     if overlap_ratio > CORPUS_OVERLAP_THRESHOLD:
         return False, f"copies corpus example ({overlap_ratio:.0%} 4-gram overlap with: {matched[:60]!r})"
@@ -307,17 +306,17 @@ _CORPUS_BODIES_MTIME: float = 0.0
 
 
 def _load_corpus_bodies_for_lint() -> list[str]:
-    """Cached read of dan-x-corpus.md bodies for overlap-check use."""
+    """Cached read of voice-corpus.md bodies for overlap-check use."""
     global _CORPUS_BODIES_CACHE, _CORPUS_BODIES_MTIME
-    if not DAN_CORPUS.exists():
+    if not VOICE_CORPUS.exists():
         _CORPUS_BODIES_CACHE = []
         return []
-    mtime = DAN_CORPUS.stat().st_mtime
+    mtime = VOICE_CORPUS.stat().st_mtime
     if _CORPUS_BODIES_CACHE is not None and mtime == _CORPUS_BODIES_MTIME:
         return _CORPUS_BODIES_CACHE
     bodies: list[str] = []
     try:
-        text = DAN_CORPUS.read_text()
+        text = VOICE_CORPUS.read_text()
         # Match the first `> body` line under each `## [NN] Pattern: ...` header
         for m in re.finditer(r"(?ms)^## \[\d+\] Pattern:.+?\n>\s*(.+?)(?:\n(?!>)|\Z)", text):
             body = re.sub(r"(?m)^> ", "", m.group(1)).strip()

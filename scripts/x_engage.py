@@ -1,7 +1,7 @@
 """x-engage CLI orchestrator. Subcommands: fetch | review | approve | redraft | kill | publish | status | setup.
 
 All subcommands print structured one-line summaries the skill wrapper (SKILL.md)
-will surface to Dan in chat. Exit code 2 = account safety signal — caller must HALT.
+will surface to the user in chat. Exit code 2 = account safety signal — caller must HALT.
 """
 
 from __future__ import annotations
@@ -456,7 +456,7 @@ PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{PLIST_LABEL}.plist"
 def cmd_scan_bg() -> int:
     """One-shot background scan: bird/discovery → filter → write to candidate_pool.
     Called by launchd every 10 min. Never drafts — drafting only happens when
-    Dan runs `/x-engage fetch` in chat.
+    the user runs `/x-engage fetch` in chat.
     """
     _check_halted()
     try:
@@ -1504,13 +1504,13 @@ def cmd_verify() -> int:
 
     # --- Corpus ---
     corpus = v_mod._load_corpus()
-    print(f"{'✅' if len(corpus) >= 8 else '⚠️ '} dan-x-corpus.md: {len(corpus)} entries (target ≥8 for diversity)")
+    print(f"{'✅' if len(corpus) >= 8 else '⚠️ '} voice-corpus.md: {len(corpus)} entries (target ≥8 for diversity)")
     if len(corpus) < 8:
         warnings.append(f"only {len(corpus)} corpus entries — retrieval may be repetitive")
 
     # --- Receipts ---
     receipts = v_mod._load_receipts()
-    print(f"{'✅' if len(receipts) >= 10 else '⚠️ '} dan-receipts.md: {len(receipts)} entries (target ≥10 for coverage)")
+    print(f"{'✅' if len(receipts) >= 10 else '⚠️ '} voice-receipts.md: {len(receipts)} entries (target ≥10 for coverage)")
     if len(receipts) < 10:
         warnings.append(f"only {len(receipts)} receipts — keyword coverage thin")
 
@@ -1528,9 +1528,9 @@ def cmd_verify() -> int:
     # --- Lint rules ---
     # Thresholds tuned to the actual breakdown:
     #   - banned openers: ~20 stable, AI-tell-driven (won't change much)
-    #   - promo/meta-disclosure: ~40 stable, includes NodeSparks-framing bans
+    #   - promo/meta-disclosure: ~40 stable, static for now (user-specific bans live in banned_terms)
     #   - aphorism + listicle: ~30 stable AI cliches
-    #   - BANNED_ANYWHERE is the growing one (Dan-flagged drafts) — watch this
+    #   - BANNED_ANYWHERE is the growing one (user-flagged drafts) — watch this
     lint_rule_count = (
         len(s_mod.BANNED_OPENERS) +
         len(s_mod.PROMO_PHRASES) +
@@ -1543,13 +1543,13 @@ def cmd_verify() -> int:
     print(f"     ├─ banned openers: {len(s_mod.BANNED_OPENERS)}")
     print(f"     ├─ promo / meta-disclosure: {len(s_mod.PROMO_PHRASES)}")
     ba_status = "⚠️ " if len(s_mod.BANNED_ANYWHERE) > 25 else "  "
-    print(f"     ├─ banned anywhere: {len(s_mod.BANNED_ANYWHERE)} {ba_status}(Dan-flagged set, watch growth past 25)")
+    print(f"     ├─ banned anywhere: {len(s_mod.BANNED_ANYWHERE)} {ba_status}(user-flagged set, watch growth past 25)")
     print(f"     ├─ aphorism patterns: {len(s_mod.APHORISM_PATTERNS)}")
     print(f"     └─ listicle patterns: {len(s_mod.LISTICLE_PATTERNS)}")
     if lint_rule_count > 120:
         warnings.append(f"lint has {lint_rule_count} patterns total — audit which are firing")
     if len(s_mod.BANNED_ANYWHERE) > 25:
-        warnings.append(f"BANNED_ANYWHERE at {len(s_mod.BANNED_ANYWHERE)} (>25) — most Dan-flagged growth happens here, consider corpus-side fix instead")
+        warnings.append(f"BANNED_ANYWHERE at {len(s_mod.BANNED_ANYWHERE)} (>25) — most user-flagged growth happens here, consider corpus-side fix instead")
 
     # --- Lint fire-count audit (last 30 days from log) ---
     print()

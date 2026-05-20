@@ -80,11 +80,20 @@ account_or_batch_size: 9
 fetch_cache_ttl_sec: 300
 
 # Custom banlist — terms that auto-reject any draft containing them.
-# Put competitor names, ex-employer names, taboo topics, etc.
+# This is where personal/company-specific bans go. Put:
+#   - Your own name (so the drafter doesn't self-reference in replies)
+#   - Your company name and "we"-framing variants (first-person singular only on X)
+#   - Competitor names, ex-employer names, ex-client names
+#   - Project names you don't want surfaced
+#   - Taboo topics
 # Case-insensitive substring match.
 banned_terms: []
-  # - acme corp
-  # - old_employer_name
+  # - jane doe                       # your name
+  # - acmecorp                       # your company / employer
+  # - "we at acmecorp"               # company "we"-framing
+  # - "the team at acmecorp"
+  # - oldjob                         # ex-employer
+  # - sideprojectname                # personal project you don't want surfaced
 
 # Notion mirror
 notion:

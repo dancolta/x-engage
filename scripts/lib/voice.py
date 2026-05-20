@@ -2,7 +2,7 @@
 
 Architecture (v2 — corpus-retrieval, May 2026):
 - Minimal positive-spec prompt (no DO-NOT instructions inside the prompt)
-- Tag-based retrieval from `dan-x-corpus.md` — 3 examples picked by source-post pattern
+- Tag-based retrieval from `voice-corpus.md` — 3 examples picked by source-post pattern
 - Hard rules live in `safety.py` post-filter only (Pink Elephant principle)
 - Scoring is light: length-band, lexical density, presence of withhold-and-name hook
 """
@@ -19,8 +19,8 @@ from . import config, log
 ROOT = Path(__file__).resolve().parents[2]
 VOICE_PROFILE_PERSONAL = ROOT / "voice-profile.personal.md"
 VOICE_PROFILE_EXAMPLE = ROOT / "voice-profile.example.md"
-DAN_CORPUS = ROOT / "dan-x-corpus.md"
-DAN_RECEIPTS = ROOT / "dan-receipts.md"
+VOICE_CORPUS = ROOT / "voice-corpus.md"
+VOICE_RECEIPTS = ROOT / "voice-receipts.md"
 GOOD_DRAFTS = ROOT / "good-drafts.md"
 
 # How many corpus examples to inject. Architecture research shows 3-5 is the sweet spot.
@@ -41,7 +41,7 @@ SHAPE_HISTORY_WINDOW = 5
 # --- Corpus loading ---
 
 def _parse_corpus(text: str) -> list[dict]:
-    """Parse dan-x-corpus.md into entries with body + pattern tags.
+    """Parse voice-corpus.md into entries with body + pattern tags.
 
     Each entry starts with `## [NN] Pattern: <tag>` header, has a `**Source-post type:**`
     line that we use for retrieval, and a quoted body (starting with `>`).
@@ -77,16 +77,16 @@ _RECEIPTS_MTIME: float = 0.0
 
 
 def _load_corpus() -> list[dict]:
-    """Cached read of dan-x-corpus.md."""
+    """Cached read of voice-corpus.md."""
     global _CORPUS_CACHE, _CORPUS_MTIME
-    if not DAN_CORPUS.exists():
-        log.warn("dan_corpus_missing", path=str(DAN_CORPUS))
+    if not VOICE_CORPUS.exists():
+        log.warn("dan_corpus_missing", path=str(VOICE_CORPUS))
         return []
-    mtime = DAN_CORPUS.stat().st_mtime
+    mtime = VOICE_CORPUS.stat().st_mtime
     if _CORPUS_CACHE is not None and mtime == _CORPUS_MTIME:
         return _CORPUS_CACHE
     try:
-        entries = _parse_corpus(DAN_CORPUS.read_text())
+        entries = _parse_corpus(VOICE_CORPUS.read_text())
     except Exception as e:
         log.warn("dan_corpus_parse_failed", error=str(e))
         entries = []
@@ -95,13 +95,13 @@ def _load_corpus() -> list[dict]:
     return entries
 
 
-# --- Receipts (static facts Dan can draw on, never invent) ---
+# --- Receipts (static facts the user can draw on, never invent) ---
 
 def _parse_receipts(text: str) -> list[dict]:
-    """Parse dan-receipts.md into entries with body + keyword tags.
+    """Parse voice-receipts.md into entries with body + keyword tags.
 
     Each entry starts with `## [NN] <label>`, has a `**topic_keywords:**` line,
-    a Dan-voiced body, and ends with `**source:** ...`.
+    a voice-matched body, and ends with `**source:** ...`.
     Returns: {label, keywords: set, body, source}.
     """
     entries: list[dict] = []
@@ -136,15 +136,15 @@ def _parse_receipts(text: str) -> list[dict]:
 
 
 def _load_receipts() -> list[dict]:
-    """Cached read of dan-receipts.md. Empty list if file missing."""
+    """Cached read of voice-receipts.md. Empty list if file missing."""
     global _RECEIPTS_CACHE, _RECEIPTS_MTIME
-    if not DAN_RECEIPTS.exists():
+    if not VOICE_RECEIPTS.exists():
         return []
-    mtime = DAN_RECEIPTS.stat().st_mtime
+    mtime = VOICE_RECEIPTS.stat().st_mtime
     if _RECEIPTS_CACHE is not None and mtime == _RECEIPTS_MTIME:
         return _RECEIPTS_CACHE
     try:
-        entries = _parse_receipts(DAN_RECEIPTS.read_text())
+        entries = _parse_receipts(VOICE_RECEIPTS.read_text())
     except Exception as e:
         log.warn("dan_receipts_parse_failed", error=str(e))
         entries = []
@@ -272,9 +272,9 @@ PROMPT_TEMPLATE = """{voice_profile}
 
 ---
 
-# Dan's real voice corpus (imitate texture, not phrasing)
+# the user's real voice corpus (imitate texture, not phrasing)
 
-These are real Dan-voiced replies. Match the register, the closer rhythm, the comma-splice cadence, the receipt-handling, the open-loop endings. Do NOT lift sentences or phrases verbatim.
+These are real voice-matched replies. Match the register, the closer rhythm, the comma-splice cadence, the receipt-handling, the open-loop endings. Do NOT lift sentences or phrases verbatim.
 
 {corpus_block}
 
@@ -295,7 +295,7 @@ Text:
 
 # Your task
 
-Write ONE X reply as Dan. Apply the six positive specs and imitate the corpus texture. Output ONLY the reply text on a single line. No quotes, no preamble, no markdown. If you cannot produce a Dan-shaped reply that says something specific, output the literal word SKIP.
+Write ONE X reply in the voice defined by the profile above. Apply the six positive specs and imitate the corpus texture. Output ONLY the reply text on a single line. No quotes, no preamble, no markdown. If you cannot produce a voice-matched reply that says something specific, output the literal word SKIP.
 """
 
 
@@ -309,9 +309,9 @@ def _format_receipts_block(receipts: list[dict]) -> str:
     """
     if not receipts:
         return ""
-    lines = ["---", "", "# Real Dan facts you MAY draw on if relevant (skip if not)",
+    lines = ["---", "", "# Real user facts you MAY draw on if relevant (skip if not)",
              "",
-             "These are real, verifiable Dan-authored receipts. Use ONE only if it naturally fits the source post. If none fit, write the reply without referencing them — DO NOT force-insert a receipt. Paraphrase or lift the texture, never copy verbatim.",
+             "These are real, verifiable user-authored receipts. Use ONE only if it naturally fits the source post. If none fit, write the reply without referencing them — DO NOT force-insert a receipt. Paraphrase or lift the texture, never copy verbatim.",
              ""]
     for r in receipts:
         lines.append(f"- {r['body']}")
@@ -339,7 +339,7 @@ def draft_reply(*, source_text: str, author: str, followers: int, age_min: int,
     instructions cause register collision. Variety is enforced by lint only
     (no 3 questions in a row, opener uniqueness).
 
-    `feedback` is the Dan-side redraft steer when used from `redraft <id>`.
+    `feedback` is the user-side redraft steer when used from `redraft <id>`.
     """
     if not VOICE_PROFILE_PERSONAL.exists():
         raise FileNotFoundError(
@@ -357,7 +357,7 @@ def draft_reply(*, source_text: str, author: str, followers: int, age_min: int,
     feedback_block = ""
     if feedback:
         feedback_block = (
-            f"# Steer (Dan's feedback on the previous draft — apply this)\n"
+            f"# Steer (user feedback on the previous draft — apply this)\n"
             f"\"\"\"\n{feedback}\n\"\"\"\n"
         )
 
