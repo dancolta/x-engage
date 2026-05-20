@@ -656,9 +656,12 @@ def _save_autopilot_runtime(cfg: dict) -> None:
 
 
 def cmd_autopilot(args: list[str]) -> int:
-    """Dispatcher for `autopilot {start|stop|status}` (plus hidden `autopilot-tick`)."""
+    """Dispatcher for `autopilot {start|stop}` (plus hidden `autopilot-tick`).
+    `autopilot status` is folded into the unified `status` command.
+    """
     if not args:
-        print("autopilot: usage `/x-engage autopilot {start|stop|status} [target=N] [until=HH:MM]`")
+        print("autopilot: usage `/x-engage autopilot {start|stop} [target=N] [until=HH:MM]`")
+        print("  (For status, use: /x-engage status — shows queue + scan-bg + autopilot)")
         return 1
     sub, rest = args[0], args[1:]
     if sub == "start":
@@ -666,8 +669,9 @@ def cmd_autopilot(args: list[str]) -> int:
     if sub == "stop":
         return cmd_autopilot_stop()
     if sub == "status":
-        return cmd_autopilot_status()
-    print(f"autopilot: unknown subcommand '{sub}'. Use start | stop | status.")
+        # Backward-compat alias — defer to unified status
+        return cmd_status()
+    print(f"autopilot: unknown subcommand '{sub}'. Use start | stop.")
     return 1
 
 
@@ -986,17 +990,49 @@ def cmd_autopilot_tick() -> int:
     return 0
 
 
-# --- status ---
+# --- status (unified: queue + scan-bg + autopilot + safety flags) ---
 
 def cmd_status() -> int:
+    """One-shot snapshot of everything. Replaces the old separate
+    `status` + `bg-status` + `autopilot status` commands.
+    """
+    import subprocess
     settings = _settings_or_panic()
+    tz_name = str(settings.get("tz", "UTC"))
     counts = state.queue_counts()
-    published_today = state.count_published_today()
+    tz_off = _tz_offset_seconds(tz_name)
+    published_today = state.count_published_today(tz_offset_sec=tz_off)
     paused = (Path.home() / ".x-engage" / "PAUSED").exists()
-    halt = config.env("X_ENGAGE_HALT", "0") == "1"
-    # No daily cap — show today's published count as info only
-    print(f"status: published_today={published_today} (no cap), "
-          f"queue={counts}, paused={paused}, halt_env={halt}")
+    halt_env = config.env("X_ENGAGE_HALT", "0") == "1"
+
+    # scan-bg state
+    scanbg_installed = PLIST_PATH.exists()
+    scanbg_running = scanbg_installed and subprocess.run(
+        ["launchctl", "list", PLIST_LABEL], capture_output=True, text=True,
+    ).returncode == 0
+    pool = candidate_pool.pool_stats()
+    pool_age = pool["last_fetched_min_ago"]
+    pool_age_str = f"{pool_age}min ago" if pool_age >= 0 else "never"
+
+    # autopilot state
+    ap_installed = AUTOPILOT_PLIST.exists()
+    ap_running = ap_installed and subprocess.run(
+        ["launchctl", "list", AUTOPILOT_LABEL], capture_output=True, text=True,
+    ).returncode == 0
+    ap_runtime = _load_autopilot_runtime()
+    ap_target = ap_runtime.get("target", "—")
+    ap_until = ap_runtime.get("until", "—")
+
+    print("─" * 50)
+    print(f"  Queue       : {counts or '{}'}")
+    print(f"  Published   : {published_today} today")
+    print(f"  Paused flag : {'YES' if paused else 'no'}{'  (HALT env set)' if halt_env else ''}")
+    print(f"  Scan-bg     : {'RUNNING' if scanbg_running else ('installed/stopped' if scanbg_installed else 'NOT INSTALLED')}")
+    print(f"                pool {pool['available']}/{pool['total']} available · last fetch {pool_age_str}")
+    print(f"  Autopilot   : {'RUNNING' if ap_running else ('installed/stopped' if ap_installed else 'NOT INSTALLED')}")
+    if ap_running or ap_installed:
+        print(f"                target={ap_target} · stop_at={ap_until} ({tz_name})")
+    print("─" * 50)
     return 0
 
 
@@ -1468,10 +1504,10 @@ def main() -> int:
         "publish": lambda: cmd_publish(),
         "status": lambda: cmd_status(),
         "setup": lambda: cmd_setup(rest),
-        "scan-bg": lambda: cmd_scan_bg(),
+        "scan-bg": lambda: cmd_scan_bg(),       # internal: launchd-only
         "run-bg": lambda: cmd_run_bg(),
         "stop-bg": lambda: cmd_stop_bg(),
-        "bg-status": lambda: cmd_bg_status(),
+        "bg-status": lambda: cmd_status(),       # alias → unified status
         "verify": lambda: cmd_verify(),
         "autopilot": lambda: cmd_autopilot(rest),
         "autopilot-tick": lambda: cmd_autopilot_tick(),

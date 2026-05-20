@@ -25,12 +25,11 @@ Run `/x-engage verify` after any change to catch bloat or staleness early.
 
 ## Disambiguation (read before routing)
 
-Two "start"-prefixed phrasings exist and they do very different things:
+If the user says vaguely "start the daemon" / "start the bot" / "run x", default to `autopilot start` since it auto-launches the scan-bg pool feeder too — one command covers the full autonomous mode.
 
-- **"background scan" / "scan-bg" / "pool" / "run x in background"** → `run-bg` — only fills the candidate pool. No drafts, no publishes.
-- **"autopilot" / "autonomous" / "auto-publish" / "fire and forget" / "go autonomous"** → `autopilot start` — drafts AND publishes without approval (bypasses approval gate).
+Only route to `run-bg` (advanced) if the user explicitly says "**scan only**" / "**pool only**" / "**no publishing**" / "**don't auto-reply**". `run-bg` does NOT publish — it just feeds the pool for later manual `fetch`.
 
-If the user says only "start the x bot" or "start the daemon" without specifying publish behavior, **ASK which mode they want before running anything** — `autopilot start` is a one-way door for the day's account safety.
+`autopilot start` is a one-way door for the day's account safety. If unsure whether the user wants autonomous publishing vs. manual review, **ASK**.
 
 ## Examples
 
@@ -44,15 +43,13 @@ Map user phrasings to subcommands:
 - `"kill #4"` or `"drop draft 4"` → `kill 4`
 - `"save #5 as a good one"` or `"mark 5 good"` → `good 5`
 - `"ship it"` or `"publish approved"` → `publish`
-- `"x status"` or `"how many replies left today"` → `status`
-- `"start background scan"` or `"run x in background"` → `run-bg`
-- `"stop background scan"` → `stop-bg`
-- `"background status"` or `"is the daemon running"` → `bg-status`
+- `"x status"` or `"how many replies left today"` or `"how is autopilot doing"` or `"is the daemon running"` → `status` (unified — covers queue, scan-bg, autopilot)
 - `"verify x-engage"` or `"is the skill healthy"` or `"check for bloat"` → `verify`
-- `"start autopilot"` or `"run x autonomously"` or `"autopilot start"` → `autopilot start`
+- `"start autopilot"` or `"run x autonomously"` or `"autopilot start"` → `autopilot start`  (auto-starts scan-bg)
 - `"stop autopilot"` or `"kill autopilot"` → `autopilot stop`
-- `"autopilot status"` or `"how is autopilot doing"` → `autopilot status`
 - `"start autopilot target=30 until=17:00"` → `autopilot start target=30 until=17:00`
+- (advanced) `"start scan-bg only"` / `"pool only no publish"` → `run-bg`
+- (advanced) `"stop scan-bg"` → `stop-bg`
 
 ## Subcommands
 
@@ -67,15 +64,13 @@ Parse the first word of the user's input as the subcommand, then run the matchin
 | `kill <id>` | Reject and remove from queue. | `… kill <id>` |
 | `good <id>` | Promote a draft to `good-drafts.md` as a vibe reference. Consider also adding to `dan-x-corpus.md` if it demonstrates a new pattern. | `… good <id>` |
 | `publish` | Ship every draft with status=approved via Playwright. | `… publish` |
-| `status` | Counts, today's published count, cooldown view, paused state. | `… status` |
+| `status` | **Unified snapshot** — queue counts, today's published, scan-bg state + pool size, autopilot state + target/stop_at, paused/halt flags. Replaces the old `bg-status` and `autopilot status` (those still work as aliases). | `… status` |
 | `setup` | First-time install: verify xurl auth, Notion, claude CLI, log into X via Playwright. | `… setup` |
-| `run-bg` | Install + load a launchd plist so a daemon scans for fresh candidates every 10 min. Next `fetch` pulls from the pre-filled pool. | `… run-bg` |
-| `stop-bg` | Unload the daemon. Existing pool stays so any pending `fetch` can still use it. | `… stop-bg` |
-| `bg-status` | Show daemon state (running / stopped / not installed) + pool size + last refresh time. | `… bg-status` |
-| `verify` | One-shot skill health check: line counts, lint pattern totals, stale file detection, SKILL.md staleness vs code. Exit 1 if warnings. | `… verify` |
-| `autopilot start [target=N] [until=HH:MM]` | Install + load `com.x-engage.autopilot` launchd plist. Daemon ticks every 60s: scan → draft 1 → lint+score → auto-approve → publish via Playwright. **Bypasses manual approval.** Stops on target hit, time reached, or safety signal. Defaults: target=50, until=18:00. Also warns if scan-bg daemon isn't running. | `… autopilot start [target=N] [until=HH:MM]` |
-| `autopilot stop` | Unload autopilot plist. Pool + queue stay. | `… autopilot stop` |
-| `autopilot status` | Daemon state + today's published count vs target + stop time + paused flag. | `… autopilot status` |
+| `verify` | Skill health check: line counts, lint pattern totals, stale file detection, SKILL.md staleness vs code. Exit 1 if warnings. | `… verify` |
+| `autopilot start [target=N] [until=HH:MM]` | Install + load `com.x-engage.autopilot` launchd plist. Daemon ticks every 60s: scan → draft 1 → lint+score → auto-approve → publish via Playwright. **Bypasses manual approval.** **Auto-starts scan-bg** if not running. Stops on target hit, time reached, or safety signal. Defaults: target=50, until=18:00. | `… autopilot start [target=N] [until=HH:MM]` |
+| `autopilot stop` | Unload autopilot plist. Pool + queue stay. scan-bg keeps running unless you also `stop-bg`. | `… autopilot stop` |
+| **(advanced)** `run-bg` | Install + load scan-bg launchd plist (every 10 min, pool feeder only — no drafts, no publishes). Normally not needed since `autopilot start` auto-launches this. Use only for pool-only / manual workflow. | `… run-bg` |
+| **(advanced)** `stop-bg` | Unload scan-bg daemon. Pool stays. | `… stop-bg` |
 
 Stream output to the user. Use long timeout (600000ms) for `fetch` and `publish`.
 
@@ -188,17 +183,22 @@ If output contains `COOKIES_EXPIRED` (from fetch, exit code 2):
 
 If arg is not in the table above, print:
 ```
-Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup|verify|run-bg|stop-bg|bg-status|autopilot]
-  fetch          — fetch candidates + draft + queue (default)
+Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup|verify|autopilot]
+  fetch [N]      — fetch candidates + draft + queue (default 15)
   review         — show pending drafts in chat
   approve <ids>  — mark drafts approved (e.g. "approve 1, 3" or "approve all")
   redraft <id>   — re-draft one with feedback (e.g. "redraft 2: shorter")
   kill <id>      — reject a draft
   good <id>      — save a draft as a vibe reference for future drafting
   publish        — ship approved drafts via Playwright
-  status         — counts, published_today, paused state
+  status         — unified snapshot (queue + scan-bg + autopilot + flags)
   setup          — first-time setup
   verify         — skill health check (line counts, bloat, staleness)
-  run-bg / stop-bg / bg-status — pool-scanner daemon control (drafts only)
-  autopilot <start|stop|status> — autonomous publish daemon (bypasses approval)
+  autopilot start [target=N] [until=HH:MM]
+                 — autonomous publish daemon (bypasses approval, auto-starts scan-bg)
+  autopilot stop — stop autonomous daemon
+
+Advanced (rarely needed — autopilot manages scan-bg automatically):
+  run-bg         — install scan-bg pool feeder only (no publishing)
+  stop-bg        — unload scan-bg daemon
 ```
