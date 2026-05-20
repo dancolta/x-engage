@@ -773,13 +773,20 @@ def cmd_autopilot_start(args: list[str]) -> int:
         print(f"autopilot start: launchctl load failed — {r.stderr.strip()}")
         return 1
 
-    # Make sure scan-bg is also running so the pool stays full.
+    # Make sure scan-bg is also running so the pool stays full. Autopilot
+    # consumes from the pool; scan-bg fills it. Start it automatically if
+    # it's not already loaded — autopilot is useless without a fresh pool.
     scan_bg_running = subprocess.run(
         ["launchctl", "list", PLIST_LABEL], capture_output=True, text=True,
     ).returncode == 0
     if not scan_bg_running:
-        print("autopilot start: WARN — scan-bg daemon not running. Autopilot needs a fresh pool.")
-        print("  Start it with: /x-engage run-bg")
+        print("autopilot start: scan-bg not running — starting it now (pool feeder)")
+        rc = cmd_run_bg()
+        if rc != 0:
+            print("autopilot start: WARN — scan-bg failed to start. Autopilot will idle on empty pool.")
+            print("  Investigate with: /x-engage bg-status. Fix, then re-run autopilot start.")
+    else:
+        print("autopilot start: scan-bg already running ✓")
 
     print(f"autopilot: STARTED — target={target} replies, stops at {until} local ({settings.get('tz', 'UTC')})")
     print(f"  Tick interval: {tick_interval}s. Logs: {project_root}/logs/autopilot.{{out,err}}")
