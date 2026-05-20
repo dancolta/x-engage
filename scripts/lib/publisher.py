@@ -144,6 +144,46 @@ def publish_batch(rows: list[dict[str, Any]], settings: dict[str, Any]) -> dict[
     return {"published": published, "failed": failed, "safety_signal": safety_signal}
 
 
+def _maybe_like_parent(page, row: dict[str, Any]) -> None:
+    """Click the parent tweet's like button with configurable probability.
+
+    Probability comes from settings.yml `engagement.like_parent_pct` (0.0–1.0,
+    default 0.0). Set to 0.5 for "every second post on average" — randomness
+    avoids the deterministic tick-tock pattern that's itself a detection signal.
+
+    Skips if:
+      - probability roll fails
+      - like button not visible (parent post deleted or page mid-load)
+      - already liked (data-testid switches from 'like' to 'unlike' — never
+        un-likes by accident)
+
+    Errors are logged but never bubble up — a like failure must not affect
+    publish status. The reply has already shipped at this point.
+    """
+    try:
+        pct = float((config.settings().get("engagement") or {}).get("like_parent_pct", 0.0))
+    except (TypeError, ValueError):
+        pct = 0.0
+    if pct <= 0:
+        return
+    if random.random() >= pct:
+        return  # rolled "skip"
+    try:
+        # Parent tweet is the first <article> on the page. Its like button has
+        # data-testid="like" (unliked) or "unlike" (already liked). We only
+        # touch "like" — never accidentally un-like an already-liked post.
+        like_btn = page.locator('article').first.locator('button[data-testid="like"]').first
+        # Short visibility check; if not present in 2s it's not coming
+        if like_btn.is_visible(timeout=2000):
+            # Brief humanized pause before clicking — read-then-like cadence
+            page.wait_for_timeout(random.randint(600, 1400))
+            like_btn.click()
+            page.wait_for_timeout(random.randint(400, 900))
+            log.info("liked_parent", id=row["id"])
+    except Exception as e:
+        log.warn("like_parent_failed", id=row["id"], err=str(e))
+
+
 def _publish_one(page, row: dict[str, Any]) -> tuple[bool, str]:
     """Navigate to source tweet, click reply, type, submit, capture published URL."""
     url = row["source_url"]
@@ -212,6 +252,10 @@ def _publish_one(page, row: dict[str, Any]) -> tuple[bool, str]:
             return False, "submit timeout"
 
         published_at = state.now()
+        # Optionally like the parent tweet (configurable probability) — addresses
+        # the "pure-reply action profile" risk surfaced by shadowban research.
+        # Wrapped in try/except so a like failure never affects publish status.
+        _maybe_like_parent(page, row)
         # X doesn't expose the published reply URL inline reliably; record source URL fallback
         state.set_draft_status(
             row["id"], "published",

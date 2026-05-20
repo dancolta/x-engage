@@ -109,6 +109,16 @@ playwright:
   headless: true                  # true = no browser window opens (recommended for scheduled runs)
                                   # false = visible browser (useful for one-time X login + debugging)
 
+# Engagement signals — optional actions alongside the reply.
+# Addresses the "pure-reply action profile" risk: an account that only ever
+# replies (never likes, scrolls, posts) fits X's automation classifier
+# stronger than one with a mixed action surface.
+engagement:
+  like_parent_pct: 0.0            # probability of also liking the parent tweet (0.0–1.0)
+                                  # 0.0 = never. 0.5 = ~every other reply. 1.0 = always (more detectable).
+                                  # Recommended: 0.5 for mixed action profile.
+                                  # Never un-likes an already-liked post (selector only matches 'like', not 'unlike').
+
 # Safety
 require_explicit_approval: true   # publish.py refuses to ship anything not chat-approved
                                   # ALWAYS keep this true. Code refuses to flip it via config.
