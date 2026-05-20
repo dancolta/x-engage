@@ -163,13 +163,17 @@ def _publish_one(page, row: dict[str, Any]) -> tuple[bool, str]:
         # but the inline reply box on a tweet detail page appears after clicking the
         # "Post your reply" placeholder. Both selectors covered.
         reply_box = None
+        # Selector timeout bumped 4s → 8s on 2026-05-20: slow X loads were
+        # causing "reply box not found" failures even on valid posts. With
+        # 3 selectors × 8s = up to 24s per publish attempt; still well
+        # under the 60s tick interval and the 90s publish gap.
         for selector in (
             'div[data-testid="tweetTextarea_0"]',
             'div[aria-label*="Post your reply"]',
             'div[aria-label*="Reply"]',
         ):
             try:
-                page.wait_for_selector(selector, timeout=4000)
+                page.wait_for_selector(selector, timeout=8000)
                 reply_box = page.locator(selector).first
                 break
             except Exception:
