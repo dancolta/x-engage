@@ -49,6 +49,26 @@ _AUTH_FAIL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Transient X-side errors — NOT cookie expiry. Catch 5xx, "Internal server
+# error", generic network blips, Cloudflare hiccups. Treat these as retry-now
+# (Dan-flagged: cookies never actually expire on his account, every prior
+# COOKIES_EXPIRED has been a transient X server issue).
+_TRANSIENT_RE = re.compile(
+    r"\b("
+    r"5\d{2}|"  # 500, 502, 503, 504
+    r"internal\s+server\s+error|"
+    r"bad\s+gateway|"
+    r"service\s+unavailable|"
+    r"gateway\s+timeout|"
+    r"connection\s+(reset|refused|aborted)|"
+    r"timed?\s*out|"
+    r"network\s+error|"
+    r"cloudflare|"
+    r"temporarily\s+unavailable"
+    r")\b",
+    re.IGNORECASE,
+)
+
 # X rate-limit signals — transient, NOT an auth problem. Cookies are fine;
 # we just hit the per-window quota. Caller should back off, not pause.
 _RATE_LIMIT_RE = re.compile(
@@ -158,12 +178,23 @@ def check_auth(timeout: int = 18) -> AuthStatus:
                 source=str(presence.get("source") or ""),
                 warnings=[f"rate-limited on auth probe (not an auth failure): {err}"],
             )
-        # Non-auth, non-rate-limit error (5xx, network) — surface but don't
-        # lock the user out
+        # Transient X-side errors (5xx, Cloudflare, network blips, "Internal
+        # server error"). Dan-flagged: cookies on his account never actually
+        # expire — every prior COOKIES_EXPIRED has been a transient X issue.
+        # Treat as authenticated + warn, let the caller retry naturally.
+        if _TRANSIENT_RE.search(err):
+            return AuthStatus(
+                authenticated=True,
+                source=str(presence.get("source") or ""),
+                warnings=[f"transient X error on auth probe (cookies likely fine): {err}"],
+            )
+        # Truly unrecognized error shape — still don't lock the user out, but
+        # surface as warning. If it turns out to be a real auth failure, the
+        # actual fetch will hit looks_like_auth_failure() which is stricter.
         return AuthStatus(
-            authenticated=False,
+            authenticated=True,
             source=str(presence.get("source") or ""),
-            error=f"live probe error: {err}",
+            warnings=[f"unrecognized live probe error (treating as transient): {err}"],
         )
 
     # Cookies are present AND bird's pipeline works. Note: if X actually
