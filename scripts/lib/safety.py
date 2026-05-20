@@ -85,6 +85,17 @@ BANNED_ANYWHERE = (
     ". different beast",
     ". different game entirely",
     ". wild stuff.",
+    # GitHub-as-blog AI tell — the model treats GitHub as a publishing platform
+    # for articles/writeups instead of a code repo. (Flagged 2026-05-20, draft
+    # "wrote up the whole thing on github if you fancy a read".)
+    "on github if you",
+    "github if you fancy",
+    "writeup on github", "write-up on github",
+    "wrote it up on github", "wrote up on github",
+    "wrote up the whole thing on github",
+    "post on github", "read on github", "blog on github",
+    # Off-voice cadence closer (same flagged draft)
+    "fancy a read",
     # Add more here as the user flags. Format: lowercased substring match.
 )
 

@@ -18,8 +18,11 @@ good-drafts.md
 bad-drafts.md
 
 # Personal voice corpus + static receipts (gitignored; loaded by voice.py if present)
-# Fork dan-x-corpus.example.md and dan-receipts.example.md into your own
-# dan-x-corpus.md / dan-receipts.md to populate the retrieval index.
+# Fork voice-corpus.example.md and voice-receipts.example.md into your own
+# voice-corpus.md / voice-receipts.md to populate the retrieval index.
+voice-corpus.md
+voice-receipts.md
+# Legacy names — kept ignored for users upgrading from older versions.
 dan-x-corpus.md
 dan-receipts.md
 
