@@ -23,6 +23,15 @@ Drafts are produced by **corpus retrieval + minimal positive-spec prompt + post-
 
 Run `/x-engage verify` after any change to catch bloat or staleness early.
 
+## Disambiguation (read before routing)
+
+Two "start"-prefixed phrasings exist and they do very different things:
+
+- **"background scan" / "scan-bg" / "pool" / "run x in background"** → `run-bg` — only fills the candidate pool. No drafts, no publishes.
+- **"autopilot" / "autonomous" / "auto-publish" / "fire and forget" / "go autonomous"** → `autopilot start` — drafts AND publishes without approval (bypasses approval gate).
+
+If the user says only "start the x bot" or "start the daemon" without specifying publish behavior, **ASK which mode they want before running anything** — `autopilot start` is a one-way door for the day's account safety.
+
 ## Examples
 
 Map user phrasings to subcommands:
@@ -136,6 +145,7 @@ Anti-bloat: `references/_archive/` holds legacy files from the pre-rebuild archi
 - Each tick: check halt conditions → pull 1 fresh candidate from pool → draft → lint+score (same bar as manual: ≥0.45) → insert as approved → publish via Playwright
 - Tick is idempotent — safe to crash and resume
 - **Requires `scan-bg` daemon running in parallel** to keep the pool fresh. Autopilot warns if it's not. Start it with `/x-engage run-bg`.
+- **Does NOT auto-publish pre-existing pending drafts.** The `pending` queue from manual mode is untouched — autopilot only ships drafts it created in the current tick. To clear a stale manual queue, use `/x-engage review` + `kill` or `approve` + `publish` as normal.
 
 **Stop conditions (any triggers self-unload):**
 1. Daily target hit (default 50, panic ceiling 50)
@@ -178,7 +188,7 @@ If output contains `COOKIES_EXPIRED` (from fetch, exit code 2):
 
 If arg is not in the table above, print:
 ```
-Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup|verify]
+Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup|verify|run-bg|stop-bg|bg-status|autopilot]
   fetch          — fetch candidates + draft + queue (default)
   review         — show pending drafts in chat
   approve <ids>  — mark drafts approved (e.g. "approve 1, 3" or "approve all")
@@ -189,5 +199,6 @@ Usage: /x-engage [fetch|review|approve|redraft|kill|good|publish|status|setup|ve
   status         — counts, published_today, paused state
   setup          — first-time setup
   verify         — skill health check (line counts, bloat, staleness)
-  run-bg / stop-bg / bg-status — daemon control
+  run-bg / stop-bg / bg-status — pool-scanner daemon control (drafts only)
+  autopilot <start|stop|status> — autonomous publish daemon (bypasses approval)
 ```

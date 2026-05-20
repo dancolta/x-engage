@@ -22,7 +22,7 @@ The philosophy: replies are only worth sending if you actually mean them. This i
 ## Why x-engage
 
 - **What it does:** Surfaces 5–15 high-signal X posts worth replying to right now, drafts a reply in your voice for each, and waits for you to approve or kill it before anything leaves your machine.
-- **What makes it different:** Every reply is human-approved. There is no "autonomous mode" and the code refuses to add one. It's a curation tool that respects your judgment, not a reply bot that fakes you.
+- **What makes it different:** Human-in-the-loop by default. Every reply requires your approval in manual mode (the default). An opt-in **autopilot mode** exists for users who have already calibrated the drafter against their own voice — see the [Autopilot disclaimer](#autopilot-disclaimer) before touching it.
 
 ## See the difference
 
@@ -34,7 +34,7 @@ Three rounds of side-by-side: what a generic reply bot would draft vs what x-eng
 
 | | x-engage | ReplyGuyApp / Replier | Manual scrolling |
 |---|---|---|---|
-| Human approves every reply | Yes | No (auto-fires) | Yes |
+| Human approves every reply | Yes (manual mode, default) — opt-in autopilot bypasses approval | No (auto-fires) | Yes |
 | Drafts in your voice from a profile file | Yes | Template-driven | N/A |
 | Runs discovery in background | Yes (opt-in) | Yes | No |
 | Open source | Yes | No | — |
@@ -48,9 +48,21 @@ Three rounds of side-by-side: what a generic reply bot would draft vs what x-eng
 This tool drives a **logged-in browser session** on a real X account via Playwright. X's [automation rules](https://help.x.com/en/rules-and-policies/twitter-automation) prohibit certain automated activity. You are responsible for staying inside them.
 
 - The defaults (15 replies/day, 24h per-handle cooldown, 90-120s jittered gap between publishes, human-typed input, single device fingerprint) are tuned to look like a person who reads X actively for ~25 minutes and replies as they go. They are **not a guarantee** that an account won't be limited.
-- Hard caps are enforced in code (`references/guardrails.md`) and **cannot be loosened via config**. Even if `config/settings.yml` says 50/day, the code uses 25.
+- The tool ships with **conservative defaults**: 25 replies/day in manual mode, 50/day in autopilot. These caps exist to keep you under X's automation radar — raise them at your own risk.
+- Hard caps are enforced in code (`references/guardrails.md`) and **cannot be loosened via config**. Even if `config/settings.yml` says higher, the code clamps to 25 (manual) / 50 (autopilot).
 - If you crank volume or run multiple accounts, you will get flagged. Don't.
-- Every reply goes through chat approval. There is **no fully autonomous mode**. This is by design.
+- Manual mode is the default and the only mode you should run on day one. Autopilot exists, but it is **gated behind a calibration checklist** (see Autopilot disclaimer below). Treat autonomous publishing as a tool you graduate into, not a switch you flip.
+
+### Autopilot disclaimer
+
+Autopilot mode publishes replies to X without per-draft human approval. Before you enable it, you are responsible for completing the following calibration. None of this is optional. If your account gets suspended because you skipped a step, that is on you.
+
+1. **Run manual mode for at least 100 approved replies.** One hundred is the floor, not the target. It is roughly four weeks of normal use at the 25/day cap and gives you a large enough sample to see how the drafter handles edge cases (sarcasm, technical threads, replies to people you disagree with, low-context posts). Fewer than 100 and you are guessing.
+2. **Calibrate your voice profile.** `voice-profile.personal.md`, `dan-x-corpus.md`, and `good-drafts.md` must reflect *your* actual voice, not the defaults shipped in this repo. If a stranger reading 20 of your approved drafts cannot tell them apart from your real posts, you are not done.
+3. **Confirm the lint and scoring thresholds are catching off-voice drafts.** Pull a week of manual-mode logs and verify that drafts you rejected scored below threshold and drafts you approved scored above. If the scorer is not separating signal from noise in manual mode, autopilot will publish the noise.
+4. **Understand the new ceiling.** Autopilot doubles the daily cap from 25 to 50 replies. That is a deliberate increase in surface area, and it increases your X account suspension risk accordingly. X does not publish its automation thresholds and does not warn before it acts. You are accepting that risk in exchange for unattended operation.
+
+If any of the four are incomplete, keep autopilot off.
 
 If your account is a critical business asset and you're not okay with any incremental risk, use the [official X API](https://docs.x.com/x-api/getting-started/about-x-api) paid tier with write scope instead of Playwright.
 
