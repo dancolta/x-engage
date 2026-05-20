@@ -551,7 +551,7 @@ def cmd_run_bg() -> int:
     <string>{os.path.expanduser('~')}</string>
   </dict>
   <key>StartInterval</key>
-  <integer>600</integer>
+  <integer>300</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
