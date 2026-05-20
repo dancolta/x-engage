@@ -85,7 +85,7 @@ PANIC = {
     "daily_cap_max": 25,
     "min_gap_sec_floor": 30,
     "handle_cooldown_hours_floor": 12,
-    "max_post_age_minutes": 90,
+    "max_post_age_minutes": 360,
     "draft_min_chars_floor": 50,
     "draft_max_chars": 280,
 }

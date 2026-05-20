@@ -17,6 +17,12 @@ voice-profile.personal.md
 good-drafts.md
 bad-drafts.md
 
+# Personal voice corpus + static receipts (gitignored; loaded by voice.py if present)
+# Fork dan-x-corpus.example.md and dan-receipts.example.md into your own
+# dan-x-corpus.md / dan-receipts.md to populate the retrieval index.
+dan-x-corpus.md
+dan-receipts.md
+
 # Local-only planning / notes (not for the public repo)
 PLAN.md
 PLAN.local.md

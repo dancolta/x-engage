@@ -39,7 +39,7 @@ DB_PATH = ROOT / "state" / "x-engage.sqlite"
 # to actually be drafted across multiple sessions. 4h ceiling = daemon has 24
 # scan cycles to refresh any given candidate; the reply-window check at draft
 # time (list_fresh max_age_min=90) still prevents drafting on stale posts.
-MAX_POOL_AGE_SEC = 4 * 60 * 60  # 4 hours
+MAX_POOL_AGE_SEC = 8 * 60 * 60  # 8 hours
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candidate_pool (

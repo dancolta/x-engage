@@ -203,6 +203,25 @@ def record_opener(opener: str) -> None:
         c.execute("INSERT INTO opener_history (opener, used_at) VALUES (?, ?)", (opener, now()))
 
 
+def recent_published_drafts(limit: int = 5) -> list[str]:
+    """Return the last N published draft texts, newest first. Used by the
+    drafter to inject a 'recent shapes' starvation quota — forces variety
+    across questions / statements / personal-experience replies (50/30/20
+    target per 2026 builder-account research).
+
+    Falls back to approved drafts if not enough published rows exist
+    (covers the first runs after a cookie reset or fresh install)."""
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT draft FROM drafts
+               WHERE status IN ('published', 'approved')
+               ORDER BY COALESCE(published_at, approved_at, created_at) DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [r["draft"] for r in rows]
+
+
 def recent_openers(limit: int = 5) -> list[str]:
     with _conn() as c:
         rows = c.execute(

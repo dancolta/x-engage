@@ -81,3 +81,34 @@ playwright:
 # Safety
 require_explicit_approval: true   # publish.py refuses to ship anything not chat-approved
                                   # ALWAYS keep this true. Code refuses to flip it via config.
+
+# Reply-shape variety (data-backed 50/30/20 distribution per 2026 research)
+# The drafter is steered toward under-represented shapes via a starvation
+# quota injected into the prompt. Tune targets to shift the mix; tune verbs
+# to match your own voice's lexicon for "I did X" language.
+shape_classifier:
+  targets:
+    experience: 0.5   # personal-experience replies (first-person resolution)
+    statement: 0.3    # value statements (concrete number, counter, reframe)
+    question: 0.2     # insider-framed questions only (cap — over this kills CTR)
+  personal_verbs:     # first-person markers that bucket a draft as "experience"
+    - had
+    - hit
+    - ran
+    - built
+    - made
+    - wrote
+    - shipped
+    - tried
+    - spent
+    - saw
+    - did
+    - fixed
+    - broke
+    - learned
+    - tested
+    - been
+    - measured
+    - cut
+    - dropped
+    - killed

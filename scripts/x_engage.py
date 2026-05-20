@@ -137,6 +137,11 @@ def cmd_fetch(args: list[str] | None = None) -> int:
     rejected = 0
     drafted_pool_ids: list[str] = []
     recent_openers = state.recent_openers(limit=5)
+    # Recent published/approved draft texts → drafter uses them to compute the
+    # shape-starvation quota (questions/statements/personal-experience mix).
+    # Updated in-loop so back-to-back drafts in the same fetch see each other's
+    # shape and rotate, not just the pre-fetch baseline.
+    recent_drafts = state.recent_published_drafts(limit=voice.SHAPE_HISTORY_WINDOW)
 
     for item in candidates:
         if drafted >= capacity:
@@ -158,6 +163,7 @@ def cmd_fetch(args: list[str] | None = None) -> int:
             author=author,
             followers=followers,
             age_min=age_min,
+            recent_drafts=recent_drafts,
         )
         # SKIP retry: drafter sometimes plays it too safe and emits SKIP on
         # posts that DO warrant a reply. Re-ask once with an explicit nudge
@@ -176,6 +182,7 @@ def cmd_fetch(args: list[str] | None = None) -> int:
                 author=author,
                 followers=followers,
                 age_min=age_min,
+                recent_drafts=recent_drafts,
                 feedback=retry_hint,
             )
             if draft.strip().upper() == "SKIP" or not draft.strip():
@@ -186,6 +193,7 @@ def cmd_fetch(args: list[str] | None = None) -> int:
 
         passes, reason = safety.lint_draft(
             draft, source_author=author, recent_openers=recent_openers,
+            recent_drafts=recent_drafts,
         )
         if not passes:
             log.info("draft_rejected", reason=reason, tweet_id=item.item_id)
@@ -214,6 +222,9 @@ def cmd_fetch(args: list[str] | None = None) -> int:
             state.set_draft_status(draft_id, "pending", notion_page_id=page_id)
         state.record_opener(safety.extract_opener(draft))
         recent_openers = state.recent_openers(limit=5)
+        # Prepend the fresh draft so the NEXT iteration's starvation quota
+        # sees it. Keeps a rolling window of 5 across the whole fetch batch.
+        recent_drafts = ([draft] + recent_drafts)[:5]
         drafted += 1
 
     # Mark pool-sourced items as drafted so they're not re-picked next run.
@@ -299,11 +310,13 @@ def cmd_redraft(args: list[str]) -> int:
         author=row["source_author"],
         followers=row["source_followers"],
         age_min=row["source_age_min"],
+        recent_drafts=state.recent_published_drafts(limit=voice.SHAPE_HISTORY_WINDOW),
         feedback=feedback,
     )
     recent_openers = state.recent_openers(limit=5)
     passes, reason = safety.lint_draft(
         new_draft, source_author=row["source_author"], recent_openers=recent_openers,
+        recent_drafts=state.recent_published_drafts(limit=voice.SHAPE_HISTORY_WINDOW),
     )
     if not passes:
         print(f"redraft: rejected ({reason}). Try different feedback or `kill {tid}`.")
@@ -874,6 +887,185 @@ def _cmd_setup_check() -> int:
     return 0 if ok else 1
 
 
+# --- Verify (skill health check) ---
+#
+# Run after any change to voice/lint/corpus. Goal: catch bloat creep early.
+# Targets baked in:
+#   - voice-profile.personal.md  : <= 100 lines (hard ceiling 120)
+#   - drafter prompt total       : <= 250 lines per call
+#   - lint rule count            : <= 20
+#   - corpus entries             : >= 8 (need diversity for retrieval)
+#   - receipts entries           : >= 10 (need coverage for keyword match)
+#
+# Also surfaces:
+#   - stale files on disk (in references/ but not loaded by code)
+#   - lint rules that haven't fired in the last 30 days (deletion candidates)
+#   - SKILL.md staleness vs voice.py / safety.py mtimes
+
+def cmd_verify() -> int:
+    """One-shot skill health check. Print report, exit 0 if healthy, 1 if warnings."""
+    import time
+    from pathlib import Path
+    from scripts.lib import voice as v_mod
+    from scripts.lib import safety as s_mod
+    root = Path(__file__).resolve().parents[1]
+
+    warnings: list[str] = []
+
+    def fsize(p: Path) -> int:
+        return len(p.read_text().splitlines()) if p.exists() else 0
+
+    print("=" * 60)
+    print("X-ENGAGE SKILL HEALTH REPORT")
+    print(f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
+
+    # --- Voice profile ---
+    vp = root / "voice-profile.personal.md"
+    vp_lines = fsize(vp)
+    status = "✅" if vp_lines <= 100 else ("⚠️ " if vp_lines <= 120 else "❌")
+    print(f"{status} voice-profile.personal.md: {vp_lines} lines (target ≤100, hard ceiling 120)")
+    if vp_lines > 100:
+        warnings.append(f"voice profile is {vp_lines} lines, target ≤100")
+    if vp_lines > 120:
+        warnings.append(f"voice profile EXCEEDS hard ceiling of 120 lines — refactor required")
+
+    # --- Corpus ---
+    corpus = v_mod._load_corpus()
+    print(f"{'✅' if len(corpus) >= 8 else '⚠️ '} dan-x-corpus.md: {len(corpus)} entries (target ≥8 for diversity)")
+    if len(corpus) < 8:
+        warnings.append(f"only {len(corpus)} corpus entries — retrieval may be repetitive")
+
+    # --- Receipts ---
+    receipts = v_mod._load_receipts()
+    print(f"{'✅' if len(receipts) >= 10 else '⚠️ '} dan-receipts.md: {len(receipts)} entries (target ≥10 for coverage)")
+    if len(receipts) < 10:
+        warnings.append(f"only {len(receipts)} receipts — keyword coverage thin")
+
+    # --- Drafter prompt estimate per call ---
+    # voice profile + 3 corpus avg + 2 receipts avg + source + scaffolding (~50)
+    avg_corpus = sum(e["length"] for e in corpus) // max(len(corpus), 1) if corpus else 0
+    avg_corpus_lines = avg_corpus // 50  # rough chars/line for prose
+    avg_receipts_lines = 1  # one-liner each
+    estimated_prompt_lines = vp_lines + (3 * avg_corpus_lines) + (2 * avg_receipts_lines) + 30
+    status = "✅" if estimated_prompt_lines <= 250 else "⚠️ "
+    print(f"{status} drafter prompt estimate: ~{estimated_prompt_lines} lines per call (target ≤250)")
+    if estimated_prompt_lines > 250:
+        warnings.append(f"prompt size ~{estimated_prompt_lines} lines exceeds 250 — investigate retrieval bloat")
+
+    # --- Lint rules ---
+    # Thresholds tuned to the actual breakdown:
+    #   - banned openers: ~20 stable, AI-tell-driven (won't change much)
+    #   - promo/meta-disclosure: ~40 stable, includes NodeSparks-framing bans
+    #   - aphorism + listicle: ~30 stable AI cliches
+    #   - BANNED_ANYWHERE is the growing one (Dan-flagged drafts) — watch this
+    lint_rule_count = (
+        len(s_mod.BANNED_OPENERS) +
+        len(s_mod.PROMO_PHRASES) +
+        len(s_mod.BANNED_ANYWHERE) +
+        len(s_mod.APHORISM_PATTERNS) +
+        len(s_mod.LISTICLE_PATTERNS)
+    )
+    status = "✅" if lint_rule_count <= 120 else "⚠️ "
+    print(f"{status} lint patterns: {lint_rule_count} total (warn at >120)")
+    print(f"     ├─ banned openers: {len(s_mod.BANNED_OPENERS)}")
+    print(f"     ├─ promo / meta-disclosure: {len(s_mod.PROMO_PHRASES)}")
+    ba_status = "⚠️ " if len(s_mod.BANNED_ANYWHERE) > 25 else "  "
+    print(f"     ├─ banned anywhere: {len(s_mod.BANNED_ANYWHERE)} {ba_status}(Dan-flagged set, watch growth past 25)")
+    print(f"     ├─ aphorism patterns: {len(s_mod.APHORISM_PATTERNS)}")
+    print(f"     └─ listicle patterns: {len(s_mod.LISTICLE_PATTERNS)}")
+    if lint_rule_count > 120:
+        warnings.append(f"lint has {lint_rule_count} patterns total — audit which are firing")
+    if len(s_mod.BANNED_ANYWHERE) > 25:
+        warnings.append(f"BANNED_ANYWHERE at {len(s_mod.BANNED_ANYWHERE)} (>25) — most Dan-flagged growth happens here, consider corpus-side fix instead")
+
+    # --- Lint fire-count audit (last 30 days from log) ---
+    print()
+    print("─── Lint fire-count (last 30 days, from logs/scan-bg.* if present) ───")
+    log_files = list((root / "logs").glob("*.err")) if (root / "logs").exists() else []
+    if log_files:
+        from collections import Counter
+        import re
+        cutoff = time.time() - (30 * 86400)
+        reasons: Counter[str] = Counter()
+        for lf in log_files:
+            try:
+                for line in lf.read_text().splitlines():
+                    if '"msg": "draft_rejected"' in line:
+                        ts_match = re.search(r'"ts":\s*(\d+)', line)
+                        if ts_match and int(ts_match.group(1)) < cutoff:
+                            continue
+                        r_match = re.search(r'"reason":\s*"([^"]+)"', line)
+                        if r_match:
+                            reasons[r_match.group(1).split(":")[0].strip()] += 1
+            except Exception:
+                pass
+        if reasons:
+            for reason, count in reasons.most_common(10):
+                print(f"     {count:>5}x  {reason}")
+        else:
+            print("     (no rejection logs found in window)")
+    else:
+        print("     (no log files in logs/ — fire-count audit unavailable)")
+
+    # --- Stale file detection ---
+    print()
+    print("─── Stale file scan (references/ entries not loaded by code) ───")
+    refs_dir = root / "references"
+    if refs_dir.exists():
+        for ref in refs_dir.iterdir():
+            if ref.is_dir() and ref.name == "_archive":
+                continue
+            if not ref.is_file() or ref.suffix != ".md":
+                continue
+            # Check if referenced anywhere in scripts/
+            scripts_dir = root / "scripts"
+            grep_target = ref.name
+            loaded = False
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["grep", "-r", grep_target, str(scripts_dir)],
+                    capture_output=True, text=True, timeout=5,
+                )
+                loaded = bool(r.stdout.strip())
+            except Exception:
+                pass
+            if loaded:
+                print(f"     ✅  {ref.name} — loaded by code")
+            else:
+                print(f"     ⚠️   {ref.name} — NOT referenced in scripts/ → archive candidate")
+                warnings.append(f"references/{ref.name} appears stale (no scripts/ reference)")
+
+    # --- SKILL.md vs code mtime ---
+    print()
+    skill_md = Path.home() / ".claude" / "skills" / "x-engage" / "SKILL.md"
+    voice_py = root / "scripts" / "lib" / "voice.py"
+    safety_py = root / "scripts" / "lib" / "safety.py"
+    if skill_md.exists() and voice_py.exists():
+        skill_age = skill_md.stat().st_mtime
+        code_age = max(voice_py.stat().st_mtime, safety_py.stat().st_mtime)
+        if code_age > skill_age + 3600:  # code is >1h newer than SKILL.md
+            age_diff = (code_age - skill_age) / 3600
+            print(f"⚠️   SKILL.md is {age_diff:.1f}h older than voice.py/safety.py → may be stale")
+            warnings.append(f"SKILL.md last touched {age_diff:.1f}h before drafter code — review")
+        else:
+            print(f"✅  SKILL.md and code in sync (within 1h)")
+
+    # --- Summary ---
+    print()
+    print("=" * 60)
+    if warnings:
+        print(f"❌  {len(warnings)} warning(s) — review before next update:")
+        for w in warnings:
+            print(f"     • {w}")
+        print("=" * 60)
+        return 1
+    print("✅  ALL CHECKS PASSED — skill is healthy")
+    print("=" * 60)
+    return 0
+
+
 # --- Main ---
 
 def main() -> int:
@@ -895,11 +1087,12 @@ def main() -> int:
         "run-bg": lambda: cmd_run_bg(),
         "stop-bg": lambda: cmd_stop_bg(),
         "bg-status": lambda: cmd_bg_status(),
+        "verify": lambda: cmd_verify(),
     }
     if cmd not in table:
         print(f"Unknown command: {cmd}")
         print("Usage: x_engage [fetch|review|approve|redraft|kill|good|publish|"
-              "status|setup|run-bg|stop-bg|bg-status|scan-bg]")
+              "status|setup|run-bg|stop-bg|bg-status|scan-bg|verify]")
         return 1
     return table[cmd]()
 

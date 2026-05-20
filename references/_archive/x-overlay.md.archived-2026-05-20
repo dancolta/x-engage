@@ -52,7 +52,7 @@ Phoenix ranker weights **profile clicks 12x a like** and uses them as the proxy 
 T1, T2, T4, T4b, T6 openers MUST contain a concrete unit (`$`, `%`, time, count, ratio) in the first 7 words. Numbers force the reader to wonder "who has this data?" and trigger the profile click. Observation-only openers stay anonymous.
 
 - ✓ `$340 and 11 days. that's what our first one cost...`
-- ✓ `~6 months in and the latency complaints disappear once you cache the planner output`
+- ✓ `5 months in and the latency complaints disappear once you cache the planner output` (no tilde — most replies don't need it)
 - ✗ `honestly the setup cost more than expected but the ROI was there in month 3`
 
 ### Lever 2 — First-person RESOLUTION, not first-person problem (T4 / T4b / T6)
@@ -91,53 +91,65 @@ The Jan 2026 Grok-based ranker actively **suppresses combative/snark replies reg
 
 Allowed: sharp disagreement that adds concrete information, respectful counter with reasoning, observation that reframes.
 
-## Reply structure templates (T1–T7, ranked by data-backed conversion)
+## Reply shape mix — 50 / 30 / 20 (data-backed, 2026)
 
-Use one template per reply. State tracks the last 5 template IDs and rejects drafts that reuse within 5 — forces rotation.
+**Variety drives profile clicks. All-question diets read as robotic and drop CTR after 3 in a row.** Per the teract.ai 70/30 builder-account case study and Hypefury reply analytics, the target mix across every 10 replies is:
 
-### T1. Specific-Number Counter-Anchor — HIGHEST (use ~25% of replies)
+- **~5 PERSONAL EXPERIENCE** — "had this issue last week, fixed it by X" → T4 / T4b / T6. Highest lurker-to-profile conversion. Anchors authority without triggering snark throttle.
+- **~3 VALUE STATEMENT** — concrete number, counter-data, reframe, three-beat closer → T1 / T2 / T5 / T7. No question mark. Lurkers click to verify the receipts.
+- **~2 QUESTION** — insider-framed forced-defense only → T3. Triggers the +75 OP-reply-back multiplier when the question pre-loads authority (specific noun, numeric anchor, embedded credential).
+
+**Enforcement.** `voice.py` injects the current shape mix (last 5 published) into the drafter prompt as a starvation quota; under-represented shapes get explicit "PUSH toward" steer, over-represented shapes get "AVOID a [shape] reply this round" steer. `safety.py` adds a backstop lint that rejects any draft creating 3 question-replies in a row — drafter then retries with a statement or experience shape.
+
+**Why this beats all-T3.** Phoenix ranker treats profile clicks as 12x a like. T3 wins the OP-reply-back coin flip, but T4/T6 (personal-experience with resolution) consistently outperform on the metric that actually moves followers. The 50/30/20 split optimizes for BOTH levers without saturating either.
+
+## Reply structure templates (T1–T7, with shape tags)
+
+Pick the template that fits the post. The shape tags below feed the 50/30/20 starvation quota — the drafter is steered toward the starving bucket, not a specific T number.
+
+### T1. Specific-Number Counter-Anchor — SHAPE: statement
 - **Formula**: `[$ / % / time] + [the thing that mattered] — [the thing everyone assumes mattered].`
 - **Band**: 80–110
 - **Example**: `$80 and three weekends. The bottleneck was schema design, not the model choice.`
 - **Goal fit**: op_reply, positioning
 - **Use when**: OP makes a sweeping cost/time/effort claim.
 
-### T2. Contrarian Frame + Concrete Reason — HIGH (use ~15%)
+### T2. Contrarian Frame + Concrete Reason — SHAPE: statement
 - **Formula**: `Actually the inverse — [specific mechanism in <12 words].`
 - **Band**: 80–110 OR 190–240
 - **Example**: `Inverse has been truer for us — the cheaper model wins when retrieval is doing the real work.`
 - **Goal fit**: quote_amplification
 - **Skip if**: OP is already contrarian (cancels).
 
-### T3. Forced-Defense Question — HIGH for op-reply (use ~20%)
+### T3. Forced-Defense Question — SHAPE: question (cap at ~20%)
 - **Formula**: `[Single short question targeting the unstated baseline/assumption].`
 - **Band**: 80–110 (keep punchy, <60 ideal)
 - **Example**: `What was the baseline you were measuring against?`
 - **Goal fit**: op_reply (strongest pull)
 - **Use when**: OP posted a benchmark/growth claim/"X is dead" take without showing work.
 
-### T4. Personal Anchor + Extrapolation — MEDIUM-HIGH (use ~15%)
+### T4. Personal Anchor + Extrapolation — SHAPE: experience (highest profile-click yield)
 - **Formula**: `Same pattern here — [N units in], [specific observation that generalizes].`
 - **Band**: 190–240
-- **Example**: `Same here, ~6 months into agent infra: latency complaints disappear once you cache the planner, not the tool calls.`
+- **Example**: `same here, 6 months into agent infra and the latency complaints disappear once you cache the planner output. tool-call caching was a red herring honestly`
 - **Goal fit**: positioning (highest profile-click yield for builder audiences)
 - **Use when**: OP shares a struggle or in-progress finding. Signals "operator, not pundit."
 
-### T5. Reframe-the-Metric — MEDIUM (use ~10%)
+### T5. Reframe-the-Metric — SHAPE: statement
 - **Formula**: `[Metric OP cited] is the wrong number. Try [more useful metric] — [why in one clause].`
 - **Band**: 190–240
 - **Example**: `Followers is the wrong number for a tool account — activation-per-100-visitors is the one that actually moves revenue.`
 - **Goal fit**: quote_amplification, positioning
 - **Use when**: OP is measuring vanity. Doubles as positioning content.
 
-### T6. Counter-Example From Own Work — MEDIUM (use ~10%)
+### T6. Counter-Example From Own Work — SHAPE: experience
 - **Formula**: `Counter-data point: [specific situation], [specific outcome opposite to OP's claim].`
 - **Band**: 190–240
 - **Example**: `Counter-data point: ran the same eval on 3 internal doc corpora last week — Haiku beat Sonnet on two of them once we tightened the system prompt.`
 - **Goal fit**: positioning
 - **Skip on**: lifestyle/marketing threads (reads as one-upping).
 
-### T4b. OSS Build-Anchor (variant of T4) — RARE, frequency-capped (use ≤1 in 25)
+### T4b. OSS Build-Anchor (variant of T4) — SHAPE: experience, RARE (≤1 in 25)
 - **Formula**: T4 with the time-anchor replaced by a build-anchor — `[Same/Similar/Adjacent] pattern — built a small [thing] for [X], [specific observation that generalizes].`
 - **Band**: 190–240 (earned-long only, never punch band — needs room to be non-promo)
 - **Example**: `Same pattern — built a small CLI doing exactly this, the bottleneck wasn't the model, it was that the planner output wasn't cached between turns.`
@@ -150,11 +162,43 @@ Use one template per reply. State tracks the last 5 template IDs and rejects dra
   - Frequency: hard cap of 1 OSS-anchor in the last 25 published replies (enforced by safety lint via state). At <500 followers the visible self-mention ratio is what readers pattern-match on.
   - Skip on lifestyle / non-builder / non-OSS-adjacent threads. Only fires when OP is discussing the exact tooling/problem the OSS thing addresses.
 
-### T7. Three-Beat Closer — MEDIUM, voice multiplier (use ~5%)
+### T7. Three-Beat Closer — SHAPE: statement
 - **Formula**: `[Clause]. [Clause]. [Punchline clause].`
 - **Band**: 80–110
 - **Example**: `Model is fine. Prompt is fine. Your eval set is what's lying to you.`
 - **Use when**: You have a clean three-step diagnosis. Don't force it.
+
+## Human-register quotas (anti-AI-tell)
+
+These are HARD lint rules. Drafts violating them auto-reject in `safety.py`.
+
+### Tilde cap — max 1, mostly zero
+
+- **Max 1 `~` per draft.** Two or more → reject.
+- **Only ~20-25% of drafts should contain any tilde at all.** Drafter has internal counter; if last 4 drafts all used tildes, this draft must use a non-tilde form.
+- **Preferred human substitutes:** `like 5 months`, `5ish`, `couple weeks`, `6 or 7`, `a few`, or drop the qualifier entirely. Real Dan-X-voice rarely needs to hedge a number — when he does, he says the hedge out loud (`like`, `prob`, `maybe`) rather than slap a tilde on it.
+
+### Aphorism punchline — banned shape
+
+Auto-reject any draft matching the shapes documented in `voice-profile.personal.md` → APHORISM-PUNCHLINE section:
+- `[noun] is real, [imperative/noun] is the [move/play/answer/whole game]`
+- `[noun] wins.` / `[noun] is the moat.` / `[noun] is the bottleneck.` as standalone closing line
+- Any closing sentence that generalizes a specific observation into universal advice
+
+Concrete instance that already shipped and must never re-ship: `compression is real, stop competing is the one move that actually accelerates it`.
+
+### Filler frequency — required on most drafts
+
+Target: **~50-60% of drafts contain a filler/hedge from the inventory.**
+
+Inventory: `tbh`, `honestly`, `fwiw`, `imo`, `iirc`, `idk`, `prob`, `prolly`, `kinda`, `sorta`, `maybe`, `fair`, `yeah`, `yep`, `same`, `nah`, `eh`, `hm`, `huh`, `wait`, `well`, `lol`, `oof`, `we'll see`, `shrug`.
+
+Drafter tracks last-5 filler rate. If under 40%, next draft is steered toward filler-bearing shape. If over 70%, drafter is steered toward a no-filler value-statement (T1/T2/T5/T7).
+
+Rules:
+- One filler per draft max. Two = reject (e.g. `honestly tbh the issue is…`).
+- Never `Honestly,` as opener (already in banned-openers list — sentence-case + comma reads as LinkedIn-import).
+- Lowercase opener filler is fine: `tbh the issue…`, `nah, the framing is wrong`, `idk man, ~5 of these landed last year`.
 
 ## Banned openers (auto-reject the draft)
 
