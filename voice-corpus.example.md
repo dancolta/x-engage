@@ -90,6 +90,16 @@
 
 ---
 
+## [09] Pattern: personal-build mention with time receipt, no platform-promotion
+
+**Source-post type:** Someone hitting rate limits / scraping problems / X automation friction
+
+> ran into the same wall a few months back, ended up writing my own helper around session cookies which buys you headroom past the cookie-auth cap. rate limits slow you down but they don't actually stop you, you just have to space requests like a human would. 4 months running on mine now, only had to refresh cookies twice
+
+**What makes this distinctive:** mentions a personal build (the helper) WITHOUT pointing the reader at github / a writeup / a blog. Credibility comes from technical specifics ("session cookies", "cookie-auth cap") + time-and-frequency receipts ("4 months", "twice"), not from offering content to read. Closer is a flat statement, not a moralizing one. This is the antidote shape to the "wrote up the whole thing on github if you fancy a read" AI tell — same energy, no platform-as-blog framing.
+
+---
+
 # Cross-corpus signal — what to ensure across all entries
 
 When building your own corpus, aim for entries that demonstrate (across the whole set, not every entry):
