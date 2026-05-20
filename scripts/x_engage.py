@@ -507,14 +507,20 @@ def cmd_run_bg() -> int:
     project_root = Path(__file__).resolve().parents[1]
     python = shutil.which("python3") or "/usr/bin/python3"
     node = shutil.which("node") or ""
-    # launchd doesn't inherit shell PATH, so node/python locations must be
+    claude_cli = shutil.which(config.env("CLAUDE_CLI", "claude")) or ""
+    # launchd doesn't inherit shell PATH, so binary locations must be
     # explicit. Build a PATH that includes the dirs holding our interpreters
-    # + standard system bin dirs the bird-search subprocess might call.
+    # + claude CLI (drafter calls it) + standard system bin dirs.
     path_parts: list[str] = []
     if node:
         path_parts.append(str(Path(node).parent))
     if python:
         path_parts.append(str(Path(python).parent))
+    if claude_cli:
+        path_parts.append(str(Path(claude_cli).parent))
+    # ~/.local/bin is the default install location for the claude CLI; include
+    # it even if `which claude` didn't resolve at plist-generation time.
+    path_parts.append(str(Path.home() / ".local" / "bin"))
     path_parts.extend(["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"])
     # Dedup preserving order
     seen: set[str] = set()
@@ -723,11 +729,17 @@ def cmd_autopilot_start(args: list[str]) -> int:
     project_root = Path(__file__).resolve().parents[1]
     python = shutil.which("python3") or "/usr/bin/python3"
     node = shutil.which("node") or ""
+    claude_cli = shutil.which(config.env("CLAUDE_CLI", "claude")) or ""
+    # launchd doesn't inherit shell PATH — drafter calls `claude` CLI which
+    # typically lives in ~/.local/bin. Include explicitly.
     path_parts: list[str] = []
     if node:
         path_parts.append(str(Path(node).parent))
     if python:
         path_parts.append(str(Path(python).parent))
+    if claude_cli:
+        path_parts.append(str(Path(claude_cli).parent))
+    path_parts.append(str(Path.home() / ".local" / "bin"))
     path_parts.extend(["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"])
     seen: set[str] = set()
     deduped = [p for p in path_parts if not (p in seen or seen.add(p))]
