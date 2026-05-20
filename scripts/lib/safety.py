@@ -75,6 +75,16 @@ BANNED_ANYWHERE = (
     "is where it ",
     "is where the ",
     "is where things ",
+    # Bare-fragment closer after a period — e.g. "...3 paying ones. different math entirely."
+    # (flagged 2026-05-20, draft published before lint update.)
+    # Shape Dan wants: comma + connector like "that's" before the closer.
+    # Pattern is PERIOD-prefixed only, so "..., that's different math entirely"
+    # passes while the bare-fragment form rejects.
+    ". different math",
+    ". whole different game",
+    ". different beast",
+    ". different game entirely",
+    ". wild stuff.",
     # Add more here as Dan flags. Format: lowercased substring match.
 )
 
