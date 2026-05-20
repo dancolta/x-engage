@@ -11,7 +11,7 @@
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-skill-orange.svg">
 </p>
 
-**X (Twitter) replies that drive profile clicks, not just likes.** Built around the 2026 X ranker mechanic where replies are weighted up to **12× a like** as a profile-curiosity signal — so reply *shape* matters more than reply volume.
+**Founders shipping AI auto-reply tools on X: opt-in rates of ~0.6%** ([purplefree, May 2026](https://purplefree.com)). The thing that gets used isn't *"reply on my behalf."* It's *"draft something I can ship in 10 seconds, then get out of my way."* That's x-engage.
 
 x-engage watches a list of accounts and keywords you define, surfaces the small subset of posts worth replying to right now (recency + follower band + engagement velocity), drafts a reply in your voice, and stops. You read it, edit it, or kill it. Then hit publish. That's the whole loop.
 
