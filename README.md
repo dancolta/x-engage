@@ -11,7 +11,7 @@
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-skill-orange.svg">
 </p>
 
-**Founders shipping AI auto-reply tools on X: opt-in rates of ~0.6%** ([purplefree, May 2026](https://purplefree.com)). The thing that gets used isn't *"reply on my behalf."* It's *"draft something I can ship in 10 seconds, then get out of my way."* That's x-engage.
+**A curation tool for X, not a reply bot.** x-engage finds the handful of posts in your network worth replying to right now, drafts a response in your voice, and stops there. You read it, edit it, kill it, or ship it. Nothing leaves your machine without you.
 
 x-engage watches a list of accounts and keywords you define, surfaces the small subset of posts worth replying to right now (recency + follower band + engagement velocity), drafts a reply in your voice, and stops. You read it, edit it, or kill it. Then hit publish. That's the whole loop.
 
