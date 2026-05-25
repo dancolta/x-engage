@@ -119,6 +119,30 @@ engagement:
                                   # Recommended: 0.5 for mixed action profile.
                                   # Never un-likes an already-liked post (selector only matches 'like', not 'unlike').
 
+# --- Humanization (added 2026-05-25 after X platform-manipulation label) ---
+# Reply-only behavior with metronome timing is the textbook spam signal,
+# regardless of content quality. This block mixes passive actions (scroll,
+# like-feed, view-profile, idle) between publishes and replaces the fixed
+# 90s+jitter gap with an exponential distribution + occasional long pauses.
+# Set warmup_enabled / interlude_enabled to false to revert to legacy behavior.
+humanization:
+  warmup_enabled: true
+  warmup_duration_sec: [25, 90]       # scroll home feed this long before first publish
+  warmup_like_pct: 0.6                # chance of liking 1-2 random feed posts during warmup
+  interlude_enabled: true
+  interlude_actions_per_reply: [2, 5] # passive actions inserted BETWEEN replies
+  interlude_action_weights:           # relative weights per action kind
+    scroll_home: 5
+    like_feed: 2
+    view_profile: 1
+    idle: 3
+  gap_distribution: exponential       # exponential | uniform (legacy)
+  gap_mean_sec: 240                   # mean wait between publishes
+  gap_floor_sec: 90                   # never less than this
+  gap_ceiling_sec: 900                # never more than this
+  long_pause_pct: 0.12                # 12% chance: roll a 5-20 min "distraction" pause
+  long_pause_range_sec: [300, 1200]
+
 # Safety
 require_explicit_approval: true   # publish.py refuses to ship anything not chat-approved
                                   # ALWAYS keep this true. Code refuses to flip it via config.

@@ -48,6 +48,188 @@ def _human_type(locator, text: str) -> None:
             time.sleep(random.uniform(0.25, 0.9))
 
 
+# --- Humanization: pacing + passive actions -------------------------------
+#
+# Added 2026-05-25 after X labeled the account for platform manipulation.
+# Goal: break the metronome-publish + 100%-reply-traffic fingerprint that
+# the spam classifier was matching. Everything here is best-effort —
+# any failure is logged and swallowed; passive actions must NEVER affect
+# publish status.
+
+def _hcfg(settings: dict[str, Any]) -> dict[str, Any]:
+    """Return the humanization sub-block with safe defaults if missing."""
+    return settings.get("humanization") or {}
+
+
+def _compute_gap(settings: dict[str, Any]) -> int:
+    """Wait time between publishes. Exponential by default; occasional long pause.
+
+    Replaces the legacy `min_gap + random.randint(0, 30)` metronome. Real users
+    don't space actions on a clock — they cluster, drift, then go quiet.
+    """
+    h = _hcfg(settings)
+    floor = int(h.get("gap_floor_sec", settings.get("min_gap_between_publishes_sec", 90)))
+    ceiling = int(h.get("gap_ceiling_sec", 900))
+    long_pct = float(h.get("long_pause_pct", 0.0))
+
+    # Occasional long "distraction" pause — humans get pulled away from the app
+    if long_pct > 0 and random.random() < long_pct:
+        lp = h.get("long_pause_range_sec", [300, 1200])
+        lo, hi = int(lp[0]), int(lp[1])
+        return random.randint(max(floor, lo), max(floor, hi))
+
+    dist = h.get("gap_distribution", "uniform")
+    if dist == "exponential":
+        mean = max(floor, int(h.get("gap_mean_sec", 240)))
+        # exponential with mean = (mean - floor), then shift up by floor so
+        # we respect the safety floor. Clamp to ceiling.
+        raw = floor + int(random.expovariate(1.0 / max(1, mean - floor)))
+        return max(floor, min(ceiling, raw))
+    # legacy uniform
+    return floor + random.randint(0, 30)
+
+
+def _scroll_home_feed(page, seconds: float) -> None:
+    """Scroll the home feed for ~`seconds` with human-ish cadence."""
+    end = time.time() + seconds
+    while time.time() < end:
+        page.mouse.wheel(0, random.randint(200, 700))
+        page.wait_for_timeout(random.randint(800, 2500))
+        # Occasional scroll-back-up — humans re-read
+        if random.random() < 0.15:
+            page.mouse.wheel(0, -random.randint(100, 400))
+            page.wait_for_timeout(random.randint(400, 1200))
+
+
+def _like_random_feed_post(page) -> bool:
+    """Click a like button on a random visible feed article. Returns True on success."""
+    try:
+        # Only target unliked buttons (data-testid='like', not 'unlike')
+        likes = page.locator('article button[data-testid="like"]')
+        n = likes.count()
+        if n == 0:
+            return False
+        idx = random.randint(0, min(n - 1, 8))  # only first ~9 to stay within viewport
+        btn = likes.nth(idx)
+        if not btn.is_visible(timeout=1500):
+            return False
+        page.wait_for_timeout(random.randint(500, 1400))
+        btn.click()
+        page.wait_for_timeout(random.randint(400, 1100))
+        return True
+    except Exception:
+        return False
+
+
+def _view_random_profile(page) -> bool:
+    """Click a random visible author link in the feed, idle, then navigate back."""
+    try:
+        # User name links inside articles point to /<handle>
+        links = page.locator('article div[data-testid="User-Name"] a[role="link"]')
+        n = links.count()
+        if n == 0:
+            return False
+        idx = random.randint(0, min(n - 1, 6))
+        link = links.nth(idx)
+        if not link.is_visible(timeout=1500):
+            return False
+        link.click()
+        page.wait_for_load_state("domcontentloaded", timeout=10000)
+        # Idle on profile — read bio, glance at posts
+        page.wait_for_timeout(random.randint(2500, 6000))
+        # Maybe a small scroll
+        if random.random() < 0.6:
+            page.mouse.wheel(0, random.randint(200, 600))
+            page.wait_for_timeout(random.randint(800, 2000))
+        page.go_back(wait_until="domcontentloaded", timeout=10000)
+        page.wait_for_timeout(random.randint(800, 1800))
+        return True
+    except Exception:
+        return False
+
+
+def _weighted_choice(weights: dict[str, int]) -> str:
+    items = [(k, max(0, int(v))) for k, v in weights.items()]
+    total = sum(w for _, w in items)
+    if total <= 0:
+        return "idle"
+    r = random.randint(1, total)
+    acc = 0
+    for k, w in items:
+        acc += w
+        if r <= acc:
+            return k
+    return items[-1][0]
+
+
+def _warmup_session(page, settings: dict[str, Any]) -> None:
+    """Scroll the home feed + maybe like 1-2 posts before any publish. Best-effort."""
+    h = _hcfg(settings)
+    if not h.get("warmup_enabled", False):
+        return
+    try:
+        page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=20000)
+        page.wait_for_timeout(random.randint(1500, 3500))
+        sig = _scan_for_safety(page)
+        if sig:
+            log.warn("warmup_safety_signal", signal=sig)
+            return
+        dur_range = h.get("warmup_duration_sec", [25, 90])
+        dur = random.uniform(float(dur_range[0]), float(dur_range[1]))
+        _scroll_home_feed(page, dur)
+        like_pct = float(h.get("warmup_like_pct", 0.0))
+        if like_pct > 0 and random.random() < like_pct:
+            for _ in range(random.randint(1, 2)):
+                _like_random_feed_post(page)
+                page.wait_for_timeout(random.randint(1500, 4000))
+        log.info("warmup_done", duration_sec=round(dur, 1))
+    except Exception as e:
+        log.warn("warmup_failed", err=str(e))
+
+
+def _interlude(page, settings: dict[str, Any]) -> None:
+    """Insert N passive actions between publishes. Best-effort, swallow failures.
+
+    Action counts come from `humanization.interlude_actions_per_reply`. Action
+    mix is weighted by `humanization.interlude_action_weights`. Each action is
+    independent; if one fails (selector miss, network blip) we move on.
+    """
+    h = _hcfg(settings)
+    if not h.get("interlude_enabled", False):
+        return
+    rng = h.get("interlude_actions_per_reply", [2, 5])
+    n = random.randint(int(rng[0]), int(rng[1]))
+    weights = h.get("interlude_action_weights", {
+        "scroll_home": 5, "like_feed": 2, "view_profile": 1, "idle": 3
+    })
+
+    # Most actions need to be on /home; navigate once if we're elsewhere.
+    try:
+        if "/home" not in (page.url or ""):
+            page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=15000)
+            page.wait_for_timeout(random.randint(1200, 2800))
+    except Exception as e:
+        log.warn("interlude_nav_failed", err=str(e))
+        return
+
+    actions_done = []
+    for _ in range(n):
+        kind = _weighted_choice(weights)
+        try:
+            if kind == "scroll_home":
+                _scroll_home_feed(page, random.uniform(4, 14))
+            elif kind == "like_feed":
+                _like_random_feed_post(page)
+            elif kind == "view_profile":
+                _view_random_profile(page)
+            else:  # idle
+                page.wait_for_timeout(random.randint(2000, 9000))
+            actions_done.append(kind)
+        except Exception as e:
+            log.warn("interlude_action_failed", kind=kind, err=str(e))
+    log.info("interlude_done", actions=actions_done)
+
+
 def _scan_for_safety(page) -> str:
     """Return non-empty string if page contains a safety/captcha signal."""
     try:
@@ -117,12 +299,19 @@ def publish_batch(rows: list[dict[str, Any]], settings: dict[str, Any]) -> dict[
             ctx.close()
             return {"published": 0, "failed": 0, "safety_signal": sig}
 
+        # Warmup: scroll the home feed (and maybe like 1-2 posts) before any
+        # publish. Breaks the "open → immediately reply" automation signature.
+        _warmup_session(page, settings)
+
         for i, row in enumerate(rows):
             if config.is_halted():
                 log.warn("publish_halted_mid_batch")
                 break
             if i > 0:
-                gap = min_gap + random.randint(0, 30)
+                # Interlude: scroll/like-feed/view-profile/idle between replies.
+                # Replaces the metronome cadence with mixed-behavior traffic.
+                _interlude(page, settings)
+                gap = _compute_gap(settings)
                 log.info("publish_gap", seconds=gap)
                 time.sleep(gap)
 
