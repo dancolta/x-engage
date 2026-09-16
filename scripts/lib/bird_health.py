@@ -69,6 +69,13 @@ _TRANSIENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# An HTML page in the error body is an edge/Cloudflare block or challenge page,
+# not X's API rejecting the session (real auth errors come back as JSON). Its
+# "403" would otherwise match _AUTH_FAIL_RE, and bird truncates the body to 200
+# chars so the word "cloudflare" never reaches _TRANSIENT_RE. Paused the whole
+# tool for 3 days on 2026-09-12 while the cookies were fine.
+_HTML_BODY_RE = re.compile(r"<!doctype\s+html|<html\b", re.IGNORECASE)
+
 # X rate-limit signals — transient, NOT an auth problem. Cookies are fine;
 # we just hit the per-window quota. Caller should back off, not pause.
 _RATE_LIMIT_RE = re.compile(
@@ -164,6 +171,12 @@ def check_auth(timeout: int = 18) -> AuthStatus:
     # zero-result responses (which could be legit "no matches").
     if isinstance(pdata, dict) and pdata.get("error"):
         err = str(pdata["error"])
+        if _HTML_BODY_RE.search(err):
+            return AuthStatus(
+                authenticated=True,
+                source=str(presence.get("source") or ""),
+                warnings=[f"HTML block page on auth probe (cookies likely fine): {err[:80]}"],
+            )
         if _AUTH_FAIL_RE.search(err):
             return AuthStatus(
                 authenticated=False,
@@ -226,7 +239,7 @@ def looks_like_auth_failure(response: Any) -> bool:
     if isinstance(err, dict):
         err = err.get("message") or str(err)
     err_s = str(err)
-    if _RATE_LIMIT_RE.search(err_s):
+    if _RATE_LIMIT_RE.search(err_s) or _HTML_BODY_RE.search(err_s):
         return False
     return bool(_AUTH_FAIL_RE.search(err_s))
 
