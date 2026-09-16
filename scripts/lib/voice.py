@@ -445,7 +445,9 @@ def draft_reply(*, source_text: str, author: str, followers: int, age_min: int,
     try:
         r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=90)
         if r.returncode != 0:
-            log.warn("claude_cli_failed", stderr=r.stderr[:300])
+            # The CLI prints auth failures ("Not logged in · Please run /login")
+            # to stdout, so a stderr-only log reads as an empty mystery.
+            log.warn("claude_cli_failed", stderr=r.stderr[:300], stdout=r.stdout[:300])
             return "SKIP"
         return r.stdout.strip().splitlines()[0].strip() if r.stdout.strip() else "SKIP"
     except subprocess.TimeoutExpired:
