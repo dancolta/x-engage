@@ -267,6 +267,20 @@ def _scan_for_safety(page) -> str:
     return ""
 
 
+def _logged_out_signal(page) -> str:
+    """Return "LOGIN_REQUIRED" when the profile's X session is gone.
+
+    A logged-out profile gets X's guest shell, which carries none of the
+    SAFETY_KEYWORDS, so _scan_for_safety passes it and every publish dies on
+    "reply box not found". 2026-09-16: 25 silent failures in one day.
+    """
+    try:
+        page.wait_for_selector('[data-testid="SideNav_AccountSwitcher_Button"]', timeout=15000)
+        return ""
+    except Exception:
+        return "LOGIN_REQUIRED"
+
+
 def _snapshot(page, label: str) -> Path:
     INCIDENT_DIR.mkdir(parents=True, exist_ok=True)
     path = INCIDENT_DIR / f"x-incident-{int(time.time())}-{label}.png"
@@ -317,7 +331,7 @@ def publish_batch(rows: list[dict[str, Any]], settings: dict[str, Any]) -> dict[
         page = ctx.new_page()
         page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(random.randint(2500, 4500))
-        sig = _scan_for_safety(page)
+        sig = _scan_for_safety(page) or _logged_out_signal(page)
         if sig:
             snap = _snapshot(page, "entry-safety")
             _write_paused(f"entry safety signal: {sig} ({snap.name})")
